@@ -1,32 +1,40 @@
-import { useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Trash2, Send, Clock, User, AlertTriangle } from 'lucide-react';
-import { trpc } from '../lib/trpc';
-import { Avatar } from '../components/Avatar';
-import { InlineLoader, Spinner } from '../components/Loading';
-import { toast } from '../components/Toast';
-import { formatDate, isOverdue, formatRelative } from '../lib/utils';
-import { cn } from '../lib/utils';
-import type { TaskStatus, TaskPriority } from '../../../shared/types';
+import { useState } from "react";
+import { useParams, useNavigate, Link } from "react-router-dom";
+import {
+  ArrowLeft,
+  Trash2,
+  Send,
+  Clock,
+  User,
+  AlertTriangle,
+} from "lucide-react";
+import { trpc } from "../lib/trpc";
+import { useStore } from "../lib/store";
+import { Avatar } from "../components/Avatar";
+import { InlineLoader, Spinner } from "../components/Loading";
+import { toast } from "../components/Toast";
+import { formatDate, isOverdue, formatRelative } from "../lib/utils";
+import { cn } from "../lib/utils";
+import type { TaskStatus, TaskPriority } from "../../../shared/types";
 
 const statusOptions: { value: TaskStatus; label: string }[] = [
-  { value: 'todo', label: 'To Do' },
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'blocked', label: 'Blocked' },
-  { value: 'done', label: 'Done' },
+  { value: "todo", label: "To Do" },
+  { value: "in_progress", label: "In Progress" },
+  { value: "blocked", label: "Blocked" },
+  { value: "done", label: "Done" },
 ];
 
 const priorityOptions: { value: TaskPriority; label: string }[] = [
-  { value: 'low', label: 'Low' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'high', label: 'High' },
-  { value: 'urgent', label: 'Urgent' },
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "urgent", label: "Urgent" },
 ];
 
 export default function TaskDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [newComment, setNewComment] = useState('');
+  const [newComment, setNewComment] = useState("");
 
   const utils = trpc.useUtils();
   const { data: task, isLoading } = trpc.tasks.getById.useQuery({ id: id! });
@@ -36,7 +44,7 @@ export default function TaskDetail() {
     onSuccess: () => {
       utils.tasks.getById.invalidate({ id: id! });
       utils.tasks.list.invalidate();
-      toast.success('Task updated');
+      toast.success("Task updated");
     },
     onError: (err) => toast.error(err.message),
   });
@@ -44,7 +52,7 @@ export default function TaskDetail() {
   const addComment = trpc.tasks.addComment.useMutation({
     onSuccess: () => {
       utils.tasks.getById.invalidate({ id: id! });
-      setNewComment('');
+      setNewComment("");
     },
     onError: (err) => toast.error(err.message),
   });
@@ -52,28 +60,35 @@ export default function TaskDetail() {
   const deleteTask = trpc.tasks.delete.useMutation({
     onSuccess: () => {
       utils.tasks.list.invalidate();
-      toast.success('Task deleted');
-      navigate('/tasks');
+      toast.success("Task deleted");
+      navigate("/tasks");
     },
   });
 
   if (isLoading) return <InlineLoader />;
-  if (!task) return <div className="text-center text-ink-400">Task not found</div>;
+  if (!task)
+    return <div className="text-center text-ink-400">Task not found</div>;
+
+  const { user: currentUser } = useStore();
+  const canDelete =
+    task.createdBy === currentUser?.id || currentUser?.role === "admin";
 
   const status = task.status as TaskStatus;
   const priority = task.priority as TaskPriority;
-  const canDelete = task.createdBy?.id === useStoreState().user?.id || useStoreState().user?.role === 'admin';
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <Link to="/tasks" className="flex items-center gap-2 text-sm text-ink-500 hover:text-ink-700 dark:hover:text-ink-300">
+        <Link
+          to="/tasks"
+          className="flex items-center gap-2 text-sm text-ink-500 hover:text-ink-700 dark:hover:text-ink-300"
+        >
           <ArrowLeft className="h-4 w-4" /> Back to Tasks
         </Link>
         {canDelete && (
           <button
             onClick={() => {
-              if (confirm('Delete this task? This cannot be undone.')) {
+              if (confirm("Delete this task? This cannot be undone.")) {
                 deleteTask.mutate({ id: id! });
               }
             }}
@@ -88,7 +103,9 @@ export default function TaskDetail() {
       <div className="card p-6">
         <h1 className="text-xl font-bold">{task.title}</h1>
         {task.description && (
-          <p className="mt-2 whitespace-pre-wrap text-sm text-ink-600 dark:text-ink-400">{task.description}</p>
+          <p className="mt-2 whitespace-pre-wrap text-sm text-ink-600 dark:text-ink-400">
+            {task.description}
+          </p>
         )}
 
         <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm">
@@ -100,11 +117,16 @@ export default function TaskDetail() {
           <div className="flex items-center gap-1.5">
             <Clock className="h-4 w-4 text-ink-400" />
             <span className="text-ink-400">Due</span>
-            <span className={cn('font-medium', isOverdue(task.dueDate) && status !== 'done' && 'text-red-600')}>
+            <span
+              className={cn(
+                "font-medium",
+                isOverdue(task.dueDate) && status !== "done" && "text-red-600",
+              )}
+            >
               {formatDate(task.dueDate)}
             </span>
           </div>
-          {isOverdue(task.dueDate) && status !== 'done' && (
+          {isOverdue(task.dueDate) && status !== "done" && (
             <span className="flex items-center gap-1.5 text-red-600">
               <AlertTriangle className="h-4 w-4" /> Overdue
             </span>
@@ -118,10 +140,17 @@ export default function TaskDetail() {
             <select
               className="input mt-1 py-1.5 text-sm"
               value={status}
-              onChange={(e) => updateTask.mutate({ id: id!, status: e.target.value as TaskStatus })}
+              onChange={(e) =>
+                updateTask.mutate({
+                  id: id!,
+                  status: e.target.value as TaskStatus,
+                })
+              }
             >
               {statusOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
               ))}
             </select>
           </div>
@@ -130,10 +159,17 @@ export default function TaskDetail() {
             <select
               className="input mt-1 py-1.5 text-sm"
               value={priority}
-              onChange={(e) => updateTask.mutate({ id: id!, priority: e.target.value as TaskPriority })}
+              onChange={(e) =>
+                updateTask.mutate({
+                  id: id!,
+                  priority: e.target.value as TaskPriority,
+                })
+              }
             >
               {priorityOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
               ))}
             </select>
           </div>
@@ -141,12 +177,19 @@ export default function TaskDetail() {
             <label className="text-xs font-medium text-ink-500">Assignee</label>
             <select
               className="input mt-1 py-1.5 text-sm"
-              value={task.assignedTo?.id ?? ''}
-              onChange={(e) => updateTask.mutate({ id: id!, assignedTo: e.target.value || null })}
+              value={task.assignedTo ?? ""}
+              onChange={(e) =>
+                updateTask.mutate({
+                  id: id!,
+                  assignedTo: e.target.value || null,
+                })
+              }
             >
               <option value="">Unassigned</option>
               {users?.map((u) => (
-                <option key={u.id} value={u.id}>{u.name}</option>
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
               ))}
             </select>
           </div>
@@ -156,7 +199,9 @@ export default function TaskDetail() {
       {/* Comments */}
       <div className="card">
         <div className="border-b border-ink-200 px-5 py-3 dark:border-ink-800">
-          <h2 className="font-semibold">Comments ({task.comments?.length ?? 0})</h2>
+          <h2 className="font-semibold">
+            Comments ({task.comments?.length ?? 0})
+          </h2>
         </div>
         <div className="space-y-4 p-5">
           {task.comments && task.comments.length > 0 ? (
@@ -165,10 +210,16 @@ export default function TaskDetail() {
                 <Avatar name={comment.user.name} size="sm" />
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{comment.user.name}</span>
-                    <span className="text-xs text-ink-400">{formatRelative(comment.createdAt)}</span>
+                    <span className="text-sm font-medium">
+                      {comment.user.name}
+                    </span>
+                    <span className="text-xs text-ink-400">
+                      {formatRelative(comment.createdAt)}
+                    </span>
                   </div>
-                  <p className="mt-1 text-sm text-ink-600 dark:text-ink-400">{comment.content}</p>
+                  <p className="mt-1 text-sm text-ink-600 dark:text-ink-400">
+                    {comment.content}
+                  </p>
                 </div>
               </div>
             ))
@@ -186,7 +237,7 @@ export default function TaskDetail() {
             }}
             className="flex gap-3 border-t border-ink-100 pt-4 dark:border-ink-800"
           >
-            <Avatar name={useStoreState().user?.name || '?'} size="sm" />
+            <Avatar name={currentUser?.name || "?"} size="sm" />
             <div className="flex-1">
               <textarea
                 value={newComment}
@@ -196,8 +247,16 @@ export default function TaskDetail() {
                 rows={2}
               />
               <div className="mt-2 flex justify-end">
-                <button type="submit" className="btn btn-primary" disabled={!newComment.trim() || addComment.isPending}>
-                  {addComment.isPending ? <Spinner /> : <Send className="h-4 w-4" />}
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={!newComment.trim() || addComment.isPending}
+                >
+                  {addComment.isPending ? (
+                    <Spinner />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
                   Comment
                 </button>
               </div>
@@ -207,10 +266,4 @@ export default function TaskDetail() {
       </div>
     </div>
   );
-}
-
-// Helper to avoid circular import
-import { useStore } from '../lib/store';
-function useStoreState() {
-  return useStore();
 }

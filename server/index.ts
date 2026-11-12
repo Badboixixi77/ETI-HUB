@@ -145,7 +145,8 @@ io.on('connection', (socket: AuthenticatedSocket) => {
 // ── Serve static client in production ────────────────────────────────
 
 if (isProd) {
-  const clientPath = path.join(__dirname, '..', 'client');
+  // When compiled: dist/server/server/index.js → go up 3 levels to reach dist/client
+  const clientPath = path.join(__dirname, '..', '..', 'client');
   app.use(express.static(clientPath));
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api')) return next();
