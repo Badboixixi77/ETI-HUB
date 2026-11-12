@@ -5,12 +5,33 @@
 @layer base {
   html {
     font-family: 'Inter', system-ui, sans-serif;
+    /* Use dynamic viewport height to handle mobile browser chrome */
+    height: 100%;
   }
   body {
     @apply bg-ink-50 text-ink-900 antialiased;
+    height: 100%;
+    /* Prevent iOS rubber-band scroll on the body */
+    overscroll-behavior: none;
+  }
+  #root {
+    height: 100%;
   }
   .dark body {
     @apply bg-ink-950 text-ink-100;
+  }
+  /* Improve tap highlight on mobile */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* Ensure inputs are legible on iOS (prevents zoom on focus) */
+  input, select, textarea {
+    font-size: 16px;
+  }
+  @media (min-width: 640px) {
+    input, select, textarea {
+      font-size: inherit;
+    }
   }
 }
 
@@ -20,21 +41,23 @@
   }
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+    /* Minimum touch target */
+    min-height: 44px;
   }
   .btn-primary {
-    @apply bg-brand-900 text-white hover:bg-brand-800 dark:bg-brand-700 dark:hover:bg-brand-600;
+    @apply bg-brand-900 text-white hover:bg-brand-800 active:bg-brand-800 dark:bg-brand-700 dark:hover:bg-brand-600;
   }
   .btn-secondary {
-    @apply border border-ink-200 bg-white text-ink-700 hover:bg-ink-50 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700;
+    @apply border border-ink-200 bg-white text-ink-700 hover:bg-ink-50 active:bg-ink-100 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700;
   }
   .btn-ghost {
-    @apply text-ink-600 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-800;
+    @apply text-ink-600 hover:bg-ink-100 active:bg-ink-200 dark:text-ink-300 dark:hover:bg-ink-800;
   }
   .btn-danger {
-    @apply bg-red-600 text-white hover:bg-red-700;
+    @apply bg-red-600 text-white hover:bg-red-700 active:bg-red-800;
   }
   .input {
-    @apply w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-900 placeholder-ink-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100;
+    @apply w-full rounded-lg border border-ink-200 bg-white px-3 py-2.5 text-ink-900 placeholder-ink-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-100;
   }
   .label {
     @apply mb-1.5 block text-sm font-medium text-ink-700 dark:text-ink-300;
@@ -44,25 +67,34 @@
   }
 }
 
-/* Scrollbar styling */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  @apply rounded-full bg-ink-300 dark:bg-ink-700;
-}
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-ink-400 dark:bg-ink-600;
+@layer utilities {
+  /* Safe area padding for devices with notch/home indicator */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
 }
 
-/* Kanban drag and drop */
-.dragging {
-  @apply opacity-50;
+/* Scrollbar styling — desktop only */
+@media (min-width: 1024px) {
+  ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-ink-300 dark:bg-ink-700;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-ink-400 dark:bg-ink-600;
+  }
 }
-.drag-over {
-  @apply ring-2 ring-brand-500 ring-offset-2;
+
+/* Smooth momentum scroll on iOS */
+.overflow-y-auto, .overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
 }

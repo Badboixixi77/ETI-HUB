@@ -1,27 +1,51 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Plus, Filter, CheckSquare, Clock, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { trpc } from '../lib/trpc';
-import { Modal } from '../components/Modal';
-import { Avatar } from '../components/Avatar';
-import { InlineLoader } from '../components/Loading';
-import { toast } from '../components/Toast';
-import { formatDate, isOverdue } from '../lib/utils';
-import { cn } from '../lib/utils';
-import type { TaskStatus, TaskPriority } from '../../../shared/types';
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import {
+  Plus,
+  Filter,
+  CheckSquare,
+  Clock,
+  AlertCircle,
+  CheckCircle2,
+  SlidersHorizontal,
+} from "lucide-react";
+import { trpc } from "../lib/trpc";
+import { Modal } from "../components/Modal";
+import { Avatar } from "../components/Avatar";
+import { InlineLoader } from "../components/Loading";
+import { toast } from "../components/Toast";
+import { formatDate, isOverdue } from "../lib/utils";
+import { cn } from "../lib/utils";
+import type { TaskStatus, TaskPriority } from "../../../shared/types";
 
-const statusConfig: Record<TaskStatus, { label: string; icon: typeof Clock; color: string }> = {
-  todo: { label: 'To Do', icon: CheckSquare, color: 'text-ink-500' },
-  in_progress: { label: 'In Progress', icon: Clock, color: 'text-blue-500' },
-  blocked: { label: 'Blocked', icon: AlertCircle, color: 'text-red-500' },
-  done: { label: 'Done', icon: CheckCircle2, color: 'text-green-500' },
+const statusConfig: Record<
+  TaskStatus,
+  { label: string; icon: typeof Clock; color: string }
+> = {
+  todo: { label: "To Do", icon: CheckSquare, color: "text-ink-500" },
+  in_progress: { label: "In Progress", icon: Clock, color: "text-blue-500" },
+  blocked: { label: "Blocked", icon: AlertCircle, color: "text-red-500" },
+  done: { label: "Done", icon: CheckCircle2, color: "text-green-500" },
 };
 
 const priorityConfig: Record<TaskPriority, { label: string; color: string }> = {
-  low: { label: 'Low', color: 'bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-300' },
-  medium: { label: 'Medium', color: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' },
-  high: { label: 'High', color: 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300' },
-  urgent: { label: 'Urgent', color: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' },
+  low: {
+    label: "Low",
+    color: "bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-300",
+  },
+  medium: {
+    label: "Medium",
+    color: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
+  },
+  high: {
+    label: "High",
+    color:
+      "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300",
+  },
+  urgent: {
+    label: "Urgent",
+    color: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
+  },
 };
 
 export default function Tasks() {
@@ -35,47 +59,76 @@ export default function Tasks() {
 
   const { data: tasks, isLoading } = trpc.tasks.list.useQuery(filter);
   const { data: users } = trpc.users.list.useQuery();
-
   const utils = trpc.useUtils();
 
   const createTask = trpc.tasks.create.useMutation({
     onSuccess: () => {
       utils.tasks.list.invalidate();
-      toast.success('Task created');
+      toast.success("Task created");
       setShowCreate(false);
     },
     onError: (err) => toast.error(err.message),
   });
 
+  const hasActiveFilters = filter.status || filter.priority || filter.mine;
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Tasks</h1>
-          <p className="text-sm text-ink-500">Create, assign, and track team work</p>
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold sm:text-2xl">Tasks</h1>
+          <p className="text-sm text-ink-500">
+            Create, assign, and track team work
+          </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-shrink-0 items-center gap-2">
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={cn('btn btn-secondary', showFilters && 'ring-2 ring-brand-500')}
+            className={cn(
+              "btn btn-secondary p-2 sm:px-4",
+              hasActiveFilters && "ring-2 ring-brand-500",
+            )}
+            aria-label="Filters"
           >
-            <Filter className="h-4 w-4" /> Filters
+            <SlidersHorizontal className="h-4 w-4" />
+            <span className="hidden sm:inline">Filters</span>
+            {hasActiveFilters && (
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">
+                {
+                  [filter.status, filter.priority, filter.mine].filter(Boolean)
+                    .length
+                }
+              </span>
+            )}
           </button>
-          <button onClick={() => setShowCreate(true)} className="btn btn-primary">
-            <Plus className="h-4 w-4" /> New Task
+          <button
+            onClick={() => setShowCreate(true)}
+            className="btn btn-primary"
+          >
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">New Task</span>
           </button>
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Filters panel */}
       {showFilters && (
-        <div className="card flex flex-wrap items-center gap-3 p-4">
+        <div className="card space-y-3 p-4 sm:flex sm:flex-wrap sm:items-center sm:gap-4 sm:space-y-0">
           <div className="flex items-center gap-2">
-            <label className="text-xs font-medium text-ink-500">Status</label>
+            <label className="text-xs font-medium text-ink-500 w-14">
+              Status
+            </label>
             <select
-              className="input w-auto py-1.5 text-sm"
-              value={filter.status ?? ''}
-              onChange={(e) => setFilter({ ...filter, status: (e.target.value || undefined) as TaskStatus | undefined })}
+              className="input flex-1 py-1.5 text-sm"
+              value={filter.status ?? ""}
+              onChange={(e) =>
+                setFilter({
+                  ...filter,
+                  status: (e.target.value || undefined) as
+                    TaskStatus | undefined,
+                })
+              }
             >
               <option value="">All</option>
               <option value="todo">To Do</option>
@@ -85,11 +138,19 @@ export default function Tasks() {
             </select>
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-xs font-medium text-ink-500">Priority</label>
+            <label className="text-xs font-medium text-ink-500 w-14">
+              Priority
+            </label>
             <select
-              className="input w-auto py-1.5 text-sm"
-              value={filter.priority ?? ''}
-              onChange={(e) => setFilter({ ...filter, priority: (e.target.value || undefined) as TaskPriority | undefined })}
+              className="input flex-1 py-1.5 text-sm"
+              value={filter.priority ?? ""}
+              onChange={(e) =>
+                setFilter({
+                  ...filter,
+                  priority: (e.target.value || undefined) as
+                    TaskPriority | undefined,
+                })
+              }
             >
               <option value="">All</option>
               <option value="low">Low</option>
@@ -98,21 +159,27 @@ export default function Tasks() {
               <option value="urgent">Urgent</option>
             </select>
           </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={!!filter.mine}
-              onChange={(e) => setFilter({ ...filter, mine: e.target.checked || undefined })}
-              className="rounded"
-            />
-            Only mine
-          </label>
-          <button
-            onClick={() => setFilter({})}
-            className="text-xs text-brand-600 hover:underline"
-          >
-            Clear filters
-          </button>
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={!!filter.mine}
+                onChange={(e) =>
+                  setFilter({ ...filter, mine: e.target.checked || undefined })
+                }
+                className="h-4 w-4 rounded"
+              />
+              Only mine
+            </label>
+            {hasActiveFilters && (
+              <button
+                onClick={() => setFilter({})}
+                className="text-xs text-brand-600 hover:underline sm:ml-4"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -130,17 +197,31 @@ export default function Tasks() {
                 <Link
                   key={task.id}
                   to={`/tasks/${task.id}`}
-                  className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-ink-50 dark:hover:bg-ink-800/50"
+                  className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-ink-50 active:bg-ink-100 dark:hover:bg-ink-800/50 sm:px-5 sm:py-4"
                 >
-                  <StatusIcon className={cn('h-5 w-5 flex-shrink-0', statusConfig[status].color)} />
+                  <StatusIcon
+                    className={cn(
+                      "h-5 w-5 flex-shrink-0",
+                      statusConfig[status].color,
+                    )}
+                  />
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium">{task.title}</p>
-                    <div className="mt-1 flex flex-wrap items-center gap-2">
-                      <span className={cn('badge text-xs', priorityConfig[priority].color)}>
+                    <p className="truncate font-medium text-sm sm:text-base">
+                      {task.title}
+                    </p>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <span
+                        className={cn(
+                          "badge text-xs",
+                          priorityConfig[priority].color,
+                        )}
+                      >
                         {priorityConfig[priority].label}
                       </span>
-                      <span className="text-xs text-ink-400">Due {formatDate(task.dueDate)}</span>
-                      {isOverdue(task.dueDate) && status !== 'done' && (
+                      <span className="text-xs text-ink-400">
+                        Due {formatDate(task.dueDate)}
+                      </span>
+                      {isOverdue(task.dueDate) && status !== "done" && (
                         <span className="badge bg-red-100 text-red-700 text-xs dark:bg-red-950 dark:text-red-300">
                           Overdue
                         </span>
@@ -148,10 +229,10 @@ export default function Tasks() {
                     </div>
                   </div>
                   {task.assignee && (
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-shrink-0 items-center gap-2">
                       <Avatar name={task.assignee.name} size="xs" />
                       <span className="hidden text-xs text-ink-400 sm:inline">
-                        {task.assignee.name}
+                        {task.assignee.name.split(" ")[0]}
                       </span>
                     </div>
                   )}
@@ -161,25 +242,36 @@ export default function Tasks() {
           ) : (
             <div className="px-5 py-12 text-center">
               <CheckSquare className="mx-auto mb-3 h-10 w-10 text-ink-300" />
-              <p className="text-sm text-ink-400">No tasks found. Create one to get started.</p>
+              <p className="text-sm text-ink-400">No tasks found.</p>
+              <button
+                onClick={() => setShowCreate(true)}
+                className="btn btn-primary mt-4"
+              >
+                <Plus className="h-4 w-4" /> Create first task
+              </button>
             </div>
           )}
         </div>
       )}
 
       {/* Create Task Modal */}
-      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="New Task" size="lg">
+      <Modal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        title="New Task"
+        size="lg"
+      >
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            const formData = new FormData(e.currentTarget);
+            const fd = new FormData(e.currentTarget);
             createTask.mutate({
-              title: formData.get('title') as string,
-              description: (formData.get('description') as string) || undefined,
-              priority: formData.get('priority') as TaskPriority,
-              assignedTo: (formData.get('assignedTo') as string) || null,
-              dueDate: formData.get('dueDate')
-                ? new Date(formData.get('dueDate') as string).toISOString()
+              title: fd.get("title") as string,
+              description: (fd.get("description") as string) || undefined,
+              priority: fd.get("priority") as TaskPriority,
+              assignedTo: (fd.get("assignedTo") as string) || null,
+              dueDate: fd.get("dueDate")
+                ? new Date(fd.get("dueDate") as string).toISOString()
                 : null,
             });
           }}
@@ -187,19 +279,32 @@ export default function Tasks() {
         >
           <div>
             <label className="label">Title</label>
-            <input name="title" className="input" required placeholder="Task title" autoFocus />
+            <input
+              name="title"
+              className="input"
+              required
+              placeholder="Task title"
+              autoFocus
+            />
           </div>
           <div>
             <label className="label">Description</label>
-            <textarea name="description" className="input min-h-20" rows={3} placeholder="Add details..." />
+            <textarea
+              name="description"
+              className="input min-h-[5rem]"
+              rows={3}
+              placeholder="Add details…"
+            />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="label">Assign to</label>
               <select name="assignedTo" className="input">
                 <option value="">Unassigned</option>
                 {users?.map((u) => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
                 ))}
               </select>
             </div>
@@ -218,10 +323,18 @@ export default function Tasks() {
             <input name="dueDate" type="date" className="input" />
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={() => setShowCreate(false)} className="btn btn-secondary">
+            <button
+              type="button"
+              onClick={() => setShowCreate(false)}
+              className="btn btn-secondary"
+            >
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary" disabled={createTask.isPending}>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={createTask.isPending}
+            >
               Create Task
             </button>
           </div>
