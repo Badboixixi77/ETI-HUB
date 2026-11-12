@@ -3,8 +3,8 @@ services:
     name: eti-hub
     runtime: node
     plan: free
-    buildCommand: npm install && npm run build
-    startCommand: npm start
+    buildCommand: npm install --include=dev && npm run build && npm run db:push
+    startCommand: node dist/server/server/index.js
     envVars:
       - key: NODE_ENV
         value: production
@@ -15,7 +15,7 @@ services:
           name: eti-hub-db
           property: connectionString
       - key: CLIENT_URL
-        value: https://eti-hub.onrender.com   # update to your actual URL
+        value: https://eti-hub.onrender.com
       - key: PORT
         value: 10000
       - key: S3_BUCKET
