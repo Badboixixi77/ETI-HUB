@@ -8,12 +8,12 @@ async function seed() {
 
   // ── Team members ─────────────────────────────────────────────────
   const teamMembers = [
-    { name: 'Taofeeq Adebayo', email: 'taofeeq@etiandpartners.com', role: 'admin', title: 'Director' },
-    { name: 'Okosun Maxwell', email: 'maxwell@etiandpartners.com', role: 'admin', title: 'Lead Developer' },
-    { name: 'Bushirah', email: 'bushirah@etiandpartners.com', role: 'finance', title: 'Finance' },
-    { name: 'Drey', email: 'drey@etiandpartners.com', role: 'operations', title: 'Operations' },
-    { name: 'Idowu', email: 'idowu@etiandpartners.com', role: 'operations', title: 'Operations' },
-    { name: 'Zaynab', email: 'zaynab@etiandpartners.com', role: 'support', title: 'Onboarding / Support' },
+    { name: 'Taofeeq Adebayo', email: 'taofeeq.adebayo@eti-trade.com', role: 'admin', title: 'Director' },
+    { name: 'Okosun Maxwell', email: 'okosun.maxwell4@gmail.com', role: 'admin', title: 'Lead Developer' },
+    { name: 'Bushirah Adebayo', email: 'adebayo.b@eti-trade.com', role: 'finance', title: 'Finance' },
+    { name: 'Drey Idowu', email: 'idowu.s@eti-trade.com', role: 'operations', title: 'Operations Lead' },
+    { name: 'Zaynab Sulaimon', email: 'zaynab.s@eti-trade.com', role: 'support', title: 'Onboarding & Support' },
+    { name: 'Faizat Adebayo', email: 'adebayo.f@eti-trade.com', role: 'support', title: 'Supplier Acquisition' },
   ];
 
   for (const member of teamMembers) {
