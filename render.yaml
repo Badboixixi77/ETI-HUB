@@ -3,7 +3,7 @@ services:
     name: eti-hub
     runtime: node
     plan: free
-    buildCommand: npm install --include=dev && npm run build && npm run db:push
+    buildCommand: npm install --include=dev && npm run build && npm run migrate
     startCommand: node dist/server/server/index.js
     envVars:
       - key: NODE_ENV

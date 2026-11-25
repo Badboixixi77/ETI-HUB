@@ -9,7 +9,7 @@ async function seed() {
   // ── Team members ─────────────────────────────────────────────────
   const teamMembers = [
     { name: 'Taofeeq Adebayo', email: 'taofeeq.adebayo@eti-trade.com', role: 'admin', title: 'Director' },
-    { name: 'Okosun Maxwell', email: 'okosun.maxwell4@gmail.com', role: 'admin', title: 'Lead Developer' },
+    { name: 'Okosun Maxwell', email: 'maxwell.okosun@eti-trade.com', role: 'admin', title: 'Lead Developer' },
     { name: 'Bushirah Adebayo', email: 'adebayo.b@eti-trade.com', role: 'finance', title: 'Finance' },
     { name: 'Drey Idowu', email: 'idowu.s@eti-trade.com', role: 'operations', title: 'Operations Lead' },
     { name: 'Zaynab Sulaimon', email: 'zaynab.s@eti-trade.com', role: 'support', title: 'Onboarding & Support' },

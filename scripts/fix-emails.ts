@@ -9,9 +9,50 @@
  */
 
 import 'dotenv/config';
+import { Pool } from 'pg';
 import { db, schema } from '../server/db';
-import { eq, or } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { hashPassword } from '../server/_core/auth';
+
+// ── Step 0: Apply raw SQL migrations before anything else ─────────────
+async function applyMigrations() {
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const client = await pool.connect();
+
+  const sqls = [
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ;`,
+    `ALTER TABLE sessions ADD COLUMN IF NOT EXISTS user_agent VARCHAR(500);`,
+    `ALTER TABLE sessions ADD COLUMN IF NOT EXISTS ip_address VARCHAR(50);`,
+    `ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMPTZ DEFAULT NOW();`,
+    `ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachment_type VARCHAR(50);`,
+    `CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token VARCHAR(255) NOT NULL UNIQUE,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );`,
+    `CREATE TABLE IF NOT EXISTS audit_logs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      action VARCHAR(100) NOT NULL,
+      target VARCHAR(255),
+      details JSONB,
+      ip_address VARCHAR(50),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );`,
+  ];
+
+  console.log('Step 0: Applying schema migrations...\n');
+  for (const sql of sqls) {
+    await client.query(sql);
+  }
+  console.log('  ✅ Schema up to date\n');
+
+  client.release();
+  await pool.end();
+}
 
 // ── Email mapping ─────────────────────────────────────────────────────
 const EMAIL_UPDATES: Array<{
@@ -28,6 +69,13 @@ const EMAIL_UPDATES: Array<{
   },
   {
     oldEmail: 'maxwell@etiandpartners.com',
+    newEmail: 'maxwell.okosun@eti-trade.com',
+    newName: 'Okosun Maxwell',
+    newTitle: 'Lead Developer',
+  },
+  {
+    // Handle the gmail address that was used in the seed
+    oldEmail: 'okosun.maxwell4@gmail.com',
     newEmail: 'maxwell.okosun@eti-trade.com',
     newName: 'Okosun Maxwell',
     newTitle: 'Lead Developer',
@@ -66,6 +114,9 @@ const NEW_USER = {
 
 async function run() {
   console.log('\n🔧 ETI Hub — Email Migration Script\n');
+
+  // ── 0. Apply schema migrations first ─────────────────────────────────
+  await applyMigrations();
 
   // ── 1. Update existing emails ───────────────────────────────────────
   console.log('Step 1: Updating user emails...\n');
