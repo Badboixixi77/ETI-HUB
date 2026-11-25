@@ -23,6 +23,7 @@
     "fix-emails": "tsx scripts/fix-emails.ts",
     "fix-maxwell": "tsx scripts/fix-maxwell.ts",
     "fix-drey": "tsx scripts/fix-drey.ts",
+    "add-user": "tsx scripts/add-user.ts",
     "migrate": "tsx scripts/migrate.ts"
   },
   "dependencies": {

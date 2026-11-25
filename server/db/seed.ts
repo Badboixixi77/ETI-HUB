@@ -14,6 +14,7 @@ async function seed() {
     { name: 'Drey Idowu', email: 'idowu.s@eti-trade.com', role: 'operations', title: 'Operations Lead' },
     { name: 'Zaynab Sulaimon', email: 'zaynab.s@eti-trade.com', role: 'support', title: 'Onboarding & Support' },
     { name: 'Faizat Adebayo', email: 'adebayo.f@eti-trade.com', role: 'support', title: 'Supplier Acquisition' },
+    { name: 'Omotoso Jesupemi', email: 'omotoso.j@eti-trade.com', role: 'support', title: 'ETI Market' },
   ];
 
   for (const member of teamMembers) {
