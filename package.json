@@ -21,6 +21,7 @@
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx server/db/seed.ts",
     "fix-emails": "tsx scripts/fix-emails.ts",
+    "fix-maxwell": "tsx scripts/fix-maxwell.ts",
     "migrate": "tsx scripts/migrate.ts"
   },
   "dependencies": {
