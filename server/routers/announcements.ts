@@ -3,6 +3,7 @@ import { router, protectedProcedure, roleProcedure } from '../_core/trpc';
 import { db, schema } from '../db';
 import { eq, sql } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
+import { sendAnnouncementEmail } from '../email';
 
 export const announcementsRouter = router({
   // List announcements
@@ -68,24 +69,44 @@ export const announcementsRouter = router({
         } as any)
         .returning();
 
-      // Create notifications for all active users
+      await db.insert(schema.auditLogs).values({
+        userId: ctx.user!.id,
+        action: 'announcement_created',
+        target: input.title,
+      } as any).catch(() => {});
+
+      // Create notifications + send emails for all active users
       const users = await db
-        .select({ id: schema.users.id })
+        .select()
         .from(schema.users)
         .where(eq(schema.users.isActive, true));
 
-      if (users.length > 0) {
-        await db.insert(schema.notifications).values(
-          users
-            .filter((u) => u.id !== ctx.user!.id)
-            .map((u) => ({
-              userId: u.id,
-              type: 'announcement',
-              title: 'New announcement',
-              body: input.title,
-              link: '/announcements',
-            })),
-        );
+      const clientUrl = process.env.CLIENT_URL ?? '';
+
+      for (const u of users) {
+        if (u.id === ctx.user!.id) continue;
+
+        // In-app notification
+        await db.insert(schema.notifications).values({
+          userId: u.id,
+          type: 'announcement',
+          title: 'New announcement',
+          body: input.title,
+          link: '/announcements',
+        } as any).catch(() => {});
+
+        // Email notification if preference enabled
+        const [prefs] = await db.select().from(schema.notificationPreferences)
+          .where(eq(schema.notificationPreferences.userId, u.id)).limit(1);
+        if (prefs?.emailOnAnnouncement) {
+          sendAnnouncementEmail({
+            to: u.email,
+            recipientName: u.name,
+            title: input.title,
+            body: input.body,
+            announcementsUrl: `${clientUrl}/announcements`,
+          }).catch(() => {});
+        }
       }
 
       return announcement!;

@@ -46,5 +46,6 @@ export interface SafeUser {
   avatarUrl: string | null;
   isActive: boolean;
   lastActiveAt: string | null;
+  passwordChangedAt: string | null;
   createdAt: string;
 }

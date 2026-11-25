@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { router, protectedProcedure } from '../_core/trpc';
 import { db, schema } from '../db';
-import { eq, and, sql, inArray, desc } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
+import { sendNewMessageEmail } from '../email';
 
 export const messagingRouter = router({
   // List channels the user is a member of
@@ -139,6 +140,7 @@ export const messagingRouter = router({
         content: z.string().min(1),
         attachmentUrl: z.string().optional(),
         attachmentName: z.string().optional(),
+        attachmentType: z.string().optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -166,8 +168,32 @@ export const messagingRouter = router({
           content: input.content,
           attachmentUrl: input.attachmentUrl ?? null,
           attachmentName: input.attachmentName ?? null,
+          attachmentType: input.attachmentType ?? null,
         } as any)
         .returning();
+
+      // For DM channels: email the other member if they have emailOnMessage enabled
+      const [channel] = await db.select().from(schema.channels).where(eq(schema.channels.id, input.channelId)).limit(1);
+      if (channel?.type === 'direct') {
+        const members = await db.select({ userId: schema.channelMembers.userId })
+          .from(schema.channelMembers)
+          .where(eq(schema.channelMembers.channelId, input.channelId));
+        const otherMemberId = members.find((m) => m.userId !== ctx.user!.id)?.userId;
+        if (otherMemberId) {
+          const [otherUser] = await db.select().from(schema.users).where(eq(schema.users.id, otherMemberId)).limit(1);
+          const [prefs] = await db.select().from(schema.notificationPreferences).where(eq(schema.notificationPreferences.userId, otherMemberId)).limit(1);
+          if (otherUser && prefs?.emailOnMessage) {
+            sendNewMessageEmail({
+              to: otherUser.email,
+              recipientName: otherUser.name,
+              senderName: ctx.user!.name,
+              channelName: ctx.user!.name,
+              preview: input.content.slice(0, 200),
+              messagesUrl: `${process.env.CLIENT_URL}/messages/${input.channelId}`,
+            }).catch(() => {});
+          }
+        }
+      }
 
       return message!;
     }),
@@ -178,8 +204,28 @@ export const messagingRouter = router({
     .mutation(async ({ input, ctx }) => {
       await db
         .insert(schema.messageReadReceipts)
-        .values({ messageId: input.messageId, userId: ctx.user!.id })
+        .values({ messageId: input.messageId, userId: ctx.user!.id } as any)
         .onConflictDoNothing();
       return { success: true };
+    }),
+
+  // Get a presigned S3 URL for message file attachments
+  getAttachmentUploadUrl: protectedProcedure
+    .input(z.object({ fileName: z.string().min(1), contentType: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3');
+      const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
+      if (!process.env.AWS_ACCESS_KEY_ID) {
+        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'File storage is not configured' });
+      }
+      const s3 = new S3Client({
+        region: process.env.S3_REGION || 'eu-west-2',
+        credentials: { accessKeyId: process.env.AWS_ACCESS_KEY_ID!, secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY! },
+      });
+      const key = `messages/${ctx.user!.id}/${Date.now()}-${input.fileName}`;
+      const command = new PutObjectCommand({ Bucket: process.env.S3_BUCKET, Key: key, ContentType: input.contentType });
+      const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 300 });
+      const fileUrl = `https://${process.env.S3_BUCKET}.s3.${process.env.S3_REGION || 'eu-west-2'}.amazonaws.com/${key}`;
+      return { uploadUrl, key, fileUrl };
     }),
 });

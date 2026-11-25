@@ -32,6 +32,11 @@ const CATEGORY_ROLE_ACCESS: Record<string, Role[]> = {
 };
 
 export const documentsRouter = router({
+  // Check if S3 is configured (for UI feedback)
+  isConfigured: protectedProcedure.query(async () => {
+    return { configured: !!(process.env.AWS_ACCESS_KEY_ID && process.env.S3_BUCKET) };
+  }),
+
   // List documents (filtered by user role)
   list: protectedProcedure
     .input(
@@ -127,6 +132,14 @@ export const documentsRouter = router({
         fileSize: input.fileSize ?? null,
         uploadedBy: ctx.user!.id,
       } as any);
+
+      // Audit log
+      await db.insert(schema.auditLogs).values({
+        userId: ctx.user!.id,
+        action: 'document_uploaded',
+        target: input.name,
+        details: { category: input.category, fileKey: input.fileKey },
+      } as any).catch(() => {});
 
       return doc!;
     }),

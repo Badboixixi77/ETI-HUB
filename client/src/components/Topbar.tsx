@@ -8,6 +8,7 @@ import { Avatar } from "./Avatar";
 import { toast } from "./Toast";
 import { formatRelative } from "../lib/utils";
 import { cn } from "../lib/utils";
+import { GlobalSearch } from "./GlobalSearch";
 
 export default function Topbar() {
   const navigate = useNavigate();
@@ -61,7 +62,9 @@ export default function Topbar() {
         <Menu className="h-5 w-5" />
       </button>
 
-      <div className="flex-1" />
+      <div className="flex-1 px-2 sm:px-4">
+        <GlobalSearch />
+      </div>
 
       <div className="flex items-center gap-1 sm:gap-2">
         {/* Dark mode */}

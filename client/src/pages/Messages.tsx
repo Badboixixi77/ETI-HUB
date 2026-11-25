@@ -24,8 +24,9 @@ export default function Messages() {
   const { user } = useStore();
   const [messageText, setMessageText] = useState("");
   const [showNewChannel, setShowNewChannel] = useState(false);
-  const [showChannelList, setShowChannelList] = useState(!channelId); // show list by default on mobile if no channel selected
+  const [showChannelList, setShowChannelList] = useState(!channelId);
   const [typingUsers, setTypingUsers] = useState<Record<string, boolean>>({});
+  const [isUploading, setIsUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({});
 
@@ -130,6 +131,39 @@ export default function Messages() {
       setShowNewChannel(false);
     },
   });
+
+  const getAttachmentUploadUrl =
+    trpc.messaging.getAttachmentUploadUrl.useMutation();
+
+  const handleAttachment = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !channelId) return;
+    setIsUploading(true);
+    try {
+      const isImage = file.type.startsWith("image/");
+      const { uploadUrl, fileUrl } = await getAttachmentUploadUrl.mutateAsync({
+        fileName: file.name,
+        contentType: file.type,
+      });
+      await fetch(uploadUrl, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type },
+      });
+      sendMessage.mutate({
+        channelId,
+        content: isImage ? "📎 Image" : `📎 ${file.name}`,
+        attachmentUrl: fileUrl,
+        attachmentName: file.name,
+        attachmentType: isImage ? "image" : "document",
+      });
+    } catch (err: any) {
+      toast.error(err.message || "File upload failed");
+    } finally {
+      setIsUploading(false);
+      e.target.value = "";
+    }
+  };
 
   const createChannel = trpc.messaging.createChannel.useMutation({
     onSuccess: (channel) => {
@@ -305,15 +339,31 @@ export default function Messages() {
                             {msg.content}
                           </p>
                           {msg.attachmentUrl && (
-                            <a
-                              href={msg.attachmentUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="mt-2 flex items-center gap-1 text-xs underline opacity-80"
-                            >
-                              <Paperclip className="h-3 w-3" />{" "}
-                              {msg.attachmentName || "Attachment"}
-                            </a>
+                            <div className="mt-2">
+                              {msg.attachmentType === "image" ? (
+                                <a
+                                  href={msg.attachmentUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  <img
+                                    src={msg.attachmentUrl}
+                                    alt={msg.attachmentName ?? "Image"}
+                                    className="max-w-[200px] rounded-lg"
+                                  />
+                                </a>
+                              ) : (
+                                <a
+                                  href={msg.attachmentUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1 text-xs underline opacity-80"
+                                >
+                                  <Paperclip className="h-3 w-3" />{" "}
+                                  {msg.attachmentName || "Attachment"}
+                                </a>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -340,6 +390,25 @@ export default function Messages() {
               onSubmit={handleSend}
               className="flex items-end gap-2 border-t border-ink-200 px-4 py-3 dark:border-ink-800"
             >
+              {/* File attachment */}
+              <label
+                className="flex h-10 w-10 flex-shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-400 hover:bg-ink-100 dark:hover:bg-ink-800"
+                title="Attach file"
+              >
+                <Paperclip
+                  className={cn(
+                    "h-5 w-5",
+                    isUploading && "animate-pulse text-brand-500",
+                  )}
+                />
+                <input
+                  type="file"
+                  className="hidden"
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                  onChange={handleAttachment}
+                  disabled={isUploading}
+                />
+              </label>
               <input
                 type="text"
                 className="input flex-1"
@@ -349,12 +418,14 @@ export default function Messages() {
                   setMessageText(e.target.value);
                   handleTyping();
                 }}
-                disabled={sendMessage.isPending}
+                disabled={sendMessage.isPending || isUploading}
               />
               <button
                 type="submit"
                 className="btn btn-primary h-10 w-10 flex-shrink-0 p-0"
-                disabled={!messageText.trim() || sendMessage.isPending}
+                disabled={
+                  !messageText.trim() || sendMessage.isPending || isUploading
+                }
                 aria-label="Send"
               >
                 {sendMessage.isPending ? (

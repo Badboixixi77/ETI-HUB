@@ -90,7 +90,7 @@ export const usersRouter = router({
         avatarUrl: z.string().url().nullable().optional(),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const { id, ...data } = input;
       const [updated] = await db
         .update(schema.users)
@@ -98,6 +98,17 @@ export const usersRouter = router({
         .where(eq(schema.users.id, id))
         .returning();
       if (!updated) throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
+
+      // Audit role changes
+      if (data.role) {
+        await db.insert(schema.auditLogs).values({
+          userId: ctx.user!.id,
+          action: 'role_changed',
+          target: updated.email,
+          details: { newRole: data.role },
+        } as any).catch(() => {});
+      }
+
       return toSafeUser(updated);
     }),
 

@@ -78,6 +78,8 @@ export const users = pgTable('users', {
   avatarUrl: varchar('avatar_url', { length: 500 }),
   isActive: boolean('is_active').notNull().default(true),
   lastActiveAt: timestamp('last_active_at'),
+  // Tracks if user has changed password from default — null means never changed
+  passwordChangedAt: timestamp('password_changed_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -89,6 +91,21 @@ export const sessions = pgTable('sessions', {
     .references(() => users.id, { onDelete: 'cascade' }),
   token: varchar('token', { length: 255 }).notNull().unique(),
   expiresAt: timestamp('expires_at').notNull(),
+  // Session metadata for session management UI
+  userAgent: varchar('user_agent', { length: 500 }),
+  ipAddress: varchar('ip_address', { length: 50 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  lastActiveAt: timestamp('last_active_at').defaultNow().notNull(),
+});
+
+export const passwordResetTokens = pgTable('password_reset_tokens', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  token: varchar('token', { length: 255 }).notNull().unique(),
+  expiresAt: timestamp('expires_at').notNull(),
+  usedAt: timestamp('used_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -101,6 +118,18 @@ export const notificationPreferences = pgTable('notification_preferences', {
   emailOnTaskUpdated: boolean('email_on_task_updated').notNull().default(true),
   emailOnMessage: boolean('email_on_message').notNull().default(false),
   emailOnAnnouncement: boolean('email_on_announcement').notNull().default(true),
+});
+
+// ── Audit Log ────────────────────────────────────────────────────────
+
+export const auditLogs = pgTable('audit_logs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  action: varchar('action', { length: 100 }).notNull(),
+  target: varchar('target', { length: 255 }),
+  details: jsonb('details'),
+  ipAddress: varchar('ip_address', { length: 50 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
 // ── Tasks ───────────────────────────────────────────────────────────
@@ -165,6 +194,7 @@ export const messages = pgTable('messages', {
   content: text('content').notNull(),
   attachmentUrl: varchar('attachment_url', { length: 500 }),
   attachmentName: varchar('attachment_name', { length: 255 }),
+  attachmentType: varchar('attachment_type', { length: 50 }), // 'image' | 'document'
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -296,6 +326,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   documentVersions: many(documentVersions),
   events: many(events),
   announcements: many(announcements),
+  auditLogs: many(auditLogs),
 }));
 
 export const tasksRelations = relations(tasks, ({ one, many }) => ({
@@ -304,7 +335,7 @@ export const tasksRelations = relations(tasks, ({ one, many }) => ({
   comments: many(taskComments),
 }));
 
-export const taskCommentsRelations = relations(taskComments, ({ one, many }) => ({
+export const taskCommentsRelations = relations(taskComments, ({ one }) => ({
   task: one(tasks, { fields: [taskComments.taskId], references: [tasks.id] }),
   user: one(users, { fields: [taskComments.userId], references: [users.id] }),
 }));
@@ -365,4 +396,12 @@ export const announcementReadsRelations = relations(announcementReads, ({ one })
 
 export const notificationsRelations = relations(notifications, ({ one }) => ({
   user: one(users, { fields: [notifications.userId], references: [users.id] }),
+}));
+
+export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
+  user: one(users, { fields: [auditLogs.userId], references: [users.id] }),
+}));
+
+export const passwordResetTokensRelations = relations(passwordResetTokens, ({ one }) => ({
+  user: one(users, { fields: [passwordResetTokens.userId], references: [users.id] }),
 }));

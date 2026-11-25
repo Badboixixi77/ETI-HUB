@@ -18,13 +18,19 @@ function randomToken(): string {
   return crypto.randomUUID() + crypto.randomUUID();
 }
 
-export async function createSession(userId: string): Promise<string> {
+export async function createSession(
+  userId: string,
+  meta?: { ipAddress?: string; userAgent?: string },
+): Promise<string> {
   const token = randomToken();
   await db.insert(schema.sessions).values({
     userId,
     token,
     expiresAt: new Date(Date.now() + SESSION_DURATION_MS),
-  });
+    ipAddress: meta?.ipAddress ?? null,
+    userAgent: meta?.userAgent ?? null,
+    lastActiveAt: new Date(),
+  } as any);
   return token;
 }
 
@@ -34,7 +40,7 @@ export async function getUserFromToken(token: string | undefined): Promise<SafeU
   const [session] = await db
     .select()
     .from(schema.sessions)
-    .where(and(eq(schema.sessions.token, token)))
+    .where(eq(schema.sessions.token, token))
     .limit(1);
 
   if (!session || session.expiresAt < new Date()) {
@@ -51,10 +57,10 @@ export async function getUserFromToken(token: string | undefined): Promise<SafeU
     return null;
   }
 
-  // Touch lastActiveAt (fire-and-forget)
-  db.update(schema.users)
-    .set({ updatedAt: new Date() } as any)
-    .where(eq(schema.users.id, session.userId))
+  // Touch session lastActiveAt (fire-and-forget)
+  db.update(schema.sessions)
+    .set({ lastActiveAt: new Date() } as any)
+    .where(eq(schema.sessions.token, token))
     .execute()
     .catch(() => {});
 
@@ -65,7 +71,18 @@ export async function destroySession(token: string): Promise<void> {
   await db.delete(schema.sessions).where(eq(schema.sessions.token, token));
 }
 
-// Clean up expired sessions (call periodically)
+export async function destroyOtherSessions(userId: string, currentToken: string): Promise<void> {
+  const allSessions = await db
+    .select()
+    .from(schema.sessions)
+    .where(eq(schema.sessions.userId, userId));
+  for (const s of allSessions) {
+    if (s.token !== currentToken) {
+      await db.delete(schema.sessions).where(eq(schema.sessions.id, s.id));
+    }
+  }
+}
+
 export async function pruneSessions(): Promise<void> {
   await db.delete(schema.sessions).where(lt(schema.sessions.expiresAt, new Date()));
 }
@@ -81,6 +98,7 @@ export function toSafeUser(user: typeof schema.users.$inferSelect): SafeUser {
     avatarUrl: user.avatarUrl,
     isActive: user.isActive,
     lastActiveAt: user.lastActiveAt?.toISOString() ?? null,
+    passwordChangedAt: (user as any).passwordChangedAt?.toISOString() ?? null,
     createdAt: user.createdAt.toISOString(),
   };
 }

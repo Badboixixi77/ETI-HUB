@@ -41,6 +41,8 @@ export default function DocumentVault() {
     { enabled: !!selectedDoc },
   );
 
+  const { data: s3Status } = trpc.documents.isConfigured.useQuery();
+  const s3Configured = s3Status?.configured ?? true; // assume configured until known otherwise
   const getUploadUrl = trpc.documents.getUploadUrl.useMutation();
   const createDoc = trpc.documents.create.useMutation({
     onSuccess: () => {
@@ -71,6 +73,23 @@ export default function DocumentVault() {
           <Upload className="h-4 w-4" /> Upload
         </button>
       </div>
+
+      {/* S3 not configured banner */}
+      {!s3Configured && (
+        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
+          <Upload className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
+          <div>
+            <p className="font-medium text-amber-900 dark:text-amber-200">
+              Document uploads are not configured yet
+            </p>
+            <p className="mt-0.5 text-sm text-amber-700 dark:text-amber-400">
+              File storage (AWS S3) has not been set up. Contact your
+              administrator to configure it. Existing documents can still be
+              viewed.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Category filter */}
       <div className="flex flex-wrap gap-2">

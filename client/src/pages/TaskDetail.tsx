@@ -7,6 +7,9 @@ import {
   Clock,
   User,
   AlertTriangle,
+  Pencil,
+  Check,
+  X,
 } from "lucide-react";
 import { trpc } from "../lib/trpc";
 import { useStore } from "../lib/store";
@@ -34,7 +37,11 @@ const priorityOptions: { value: TaskPriority; label: string }[] = [
 export default function TaskDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user: currentUser } = useStore();
   const [newComment, setNewComment] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
 
   const utils = trpc.useUtils();
   const { data: task, isLoading } = trpc.tasks.getById.useQuery({ id: id! });
@@ -45,6 +52,7 @@ export default function TaskDetail() {
       utils.tasks.getById.invalidate({ id: id! });
       utils.tasks.list.invalidate();
       toast.success("Task updated");
+      setEditing(false);
     },
     onError: (err) => toast.error(err.message),
   });
@@ -69,15 +77,29 @@ export default function TaskDetail() {
   if (!task)
     return <div className="text-center text-ink-400">Task not found</div>;
 
-  const { user: currentUser } = useStore();
+  const status = task.status as TaskStatus;
+  const priority = task.priority as TaskPriority;
   const canDelete =
     task.createdBy === currentUser?.id || currentUser?.role === "admin";
 
-  const status = task.status as TaskStatus;
-  const priority = task.priority as TaskPriority;
+  const startEdit = () => {
+    setEditTitle(task.title);
+    setEditDescription(task.description ?? "");
+    setEditing(true);
+  };
+
+  const saveEdit = () => {
+    if (!editTitle.trim()) return;
+    updateTask.mutate({
+      id: id!,
+      title: editTitle.trim(),
+      description: editDescription || null,
+    });
+  };
 
   return (
     <div className="space-y-6">
+      {/* Back + Delete */}
       <div className="flex items-center justify-between">
         <Link
           to="/tasks"
@@ -88,112 +110,187 @@ export default function TaskDetail() {
         {canDelete && (
           <button
             onClick={() => {
-              if (confirm("Delete this task? This cannot be undone.")) {
+              if (confirm("Delete this task? This cannot be undone."))
                 deleteTask.mutate({ id: id! });
-              }
             }}
-            className="btn btn-ghost text-red-600"
+            className="btn btn-ghost text-red-600 text-sm"
           >
             <Trash2 className="h-4 w-4" /> Delete
           </button>
         )}
       </div>
 
-      {/* Task header */}
-      <div className="card p-6">
-        <h1 className="text-xl font-bold">{task.title}</h1>
-        {task.description && (
-          <p className="mt-2 whitespace-pre-wrap text-sm text-ink-600 dark:text-ink-400">
-            {task.description}
-          </p>
+      {/* Task header card */}
+      <div className="card p-5 sm:p-6">
+        {/* Title — view or edit mode */}
+        {editing ? (
+          <div className="space-y-3">
+            <div>
+              <label className="label">Title</label>
+              <input
+                className="input text-base font-semibold"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="label">Description</label>
+              <textarea
+                className="input min-h-[6rem]"
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                placeholder="Add a description…"
+                rows={4}
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={saveEdit}
+                disabled={updateTask.isPending || !editTitle.trim()}
+                className="btn btn-primary"
+              >
+                {updateTask.isPending ? (
+                  <Spinner />
+                ) : (
+                  <Check className="h-4 w-4" />
+                )}{" "}
+                Save
+              </button>
+              <button
+                onClick={() => setEditing(false)}
+                className="btn btn-secondary"
+              >
+                <X className="h-4 w-4" /> Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="group">
+            <div className="flex items-start gap-2">
+              <h1 className="flex-1 text-xl font-bold leading-tight">
+                {task.title}
+              </h1>
+              <button
+                onClick={startEdit}
+                className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-ink-400 opacity-0 transition-opacity hover:bg-ink-100 hover:text-ink-600 group-hover:opacity-100 dark:hover:bg-ink-800"
+                aria-label="Edit task"
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+            </div>
+            {task.description ? (
+              <p className="mt-2 whitespace-pre-wrap text-sm text-ink-600 dark:text-ink-400">
+                {task.description}
+              </p>
+            ) : (
+              <button
+                onClick={startEdit}
+                className="mt-2 text-sm text-ink-400 hover:text-ink-600 dark:hover:text-ink-300"
+              >
+                + Add a description
+              </button>
+            )}
+          </div>
         )}
 
-        <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm">
-          <div className="flex items-center gap-1.5">
-            <User className="h-4 w-4 text-ink-400" />
-            <span className="text-ink-400">Created by</span>
-            <span className="font-medium">{task.creator?.name}</span>
+        {/* Meta row */}
+        {!editing && (
+          <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+            <div className="flex items-center gap-1.5">
+              <User className="h-4 w-4 text-ink-400" />
+              <span className="text-ink-400">Created by</span>
+              <span className="font-medium">{task.creator?.name}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Clock className="h-4 w-4 text-ink-400" />
+              <span className="text-ink-400">Due</span>
+              <span
+                className={cn(
+                  "font-medium",
+                  isOverdue(task.dueDate) &&
+                    status !== "done" &&
+                    "text-red-600",
+                )}
+              >
+                {formatDate(task.dueDate)}
+              </span>
+            </div>
+            {isOverdue(task.dueDate) && status !== "done" && (
+              <span className="flex items-center gap-1.5 text-red-600 font-medium">
+                <AlertTriangle className="h-4 w-4" /> Overdue
+              </span>
+            )}
           </div>
-          <div className="flex items-center gap-1.5">
-            <Clock className="h-4 w-4 text-ink-400" />
-            <span className="text-ink-400">Due</span>
-            <span
-              className={cn(
-                "font-medium",
-                isOverdue(task.dueDate) && status !== "done" && "text-red-600",
-              )}
-            >
-              {formatDate(task.dueDate)}
-            </span>
-          </div>
-          {isOverdue(task.dueDate) && status !== "done" && (
-            <span className="flex items-center gap-1.5 text-red-600">
-              <AlertTriangle className="h-4 w-4" /> Overdue
-            </span>
-          )}
-        </div>
+        )}
 
-        {/* Editable fields */}
-        <div className="mt-4 grid grid-cols-1 gap-4 border-t border-ink-100 pt-4 dark:border-ink-800 sm:grid-cols-3">
-          <div>
-            <label className="text-xs font-medium text-ink-500">Status</label>
-            <select
-              className="input mt-1 py-1.5 text-sm"
-              value={status}
-              onChange={(e) =>
-                updateTask.mutate({
-                  id: id!,
-                  status: e.target.value as TaskStatus,
-                })
-              }
-            >
-              {statusOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+        {/* Editable status/priority/assignee */}
+        {!editing && (
+          <div className="mt-4 grid grid-cols-1 gap-3 border-t border-ink-100 pt-4 dark:border-ink-800 sm:grid-cols-3">
+            <div>
+              <label className="text-xs font-medium text-ink-500">Status</label>
+              <select
+                className="input mt-1 py-1.5 text-sm"
+                value={status}
+                onChange={(e) =>
+                  updateTask.mutate({
+                    id: id!,
+                    status: e.target.value as TaskStatus,
+                  })
+                }
+              >
+                {statusOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-ink-500">
+                Priority
+              </label>
+              <select
+                className="input mt-1 py-1.5 text-sm"
+                value={priority}
+                onChange={(e) =>
+                  updateTask.mutate({
+                    id: id!,
+                    priority: e.target.value as TaskPriority,
+                  })
+                }
+              >
+                {priorityOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-ink-500">
+                Assignee
+              </label>
+              <select
+                className="input mt-1 py-1.5 text-sm"
+                value={task.assignedTo ?? ""}
+                onChange={(e) =>
+                  updateTask.mutate({
+                    id: id!,
+                    assignedTo: e.target.value || null,
+                  })
+                }
+              >
+                <option value="">Unassigned</option>
+                {users?.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
-          <div>
-            <label className="text-xs font-medium text-ink-500">Priority</label>
-            <select
-              className="input mt-1 py-1.5 text-sm"
-              value={priority}
-              onChange={(e) =>
-                updateTask.mutate({
-                  id: id!,
-                  priority: e.target.value as TaskPriority,
-                })
-              }
-            >
-              {priorityOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-ink-500">Assignee</label>
-            <select
-              className="input mt-1 py-1.5 text-sm"
-              value={task.assignedTo ?? ""}
-              onChange={(e) =>
-                updateTask.mutate({
-                  id: id!,
-                  assignedTo: e.target.value || null,
-                })
-              }
-            >
-              <option value="">Unassigned</option>
-              {users?.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Comments */}
@@ -227,13 +324,11 @@ export default function TaskDetail() {
             <p className="text-sm text-ink-400">No comments yet</p>
           )}
 
-          {/* Add comment */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (newComment.trim()) {
+              if (newComment.trim())
                 addComment.mutate({ taskId: id!, content: newComment.trim() });
-              }
             }}
             className="flex gap-3 border-t border-ink-100 pt-4 dark:border-ink-800"
           >
@@ -242,8 +337,8 @@ export default function TaskDetail() {
               <textarea
                 value={newComment}
                 onChange={(e) => setNewComment(e.target.value)}
-                placeholder="Write a comment..."
-                className="input min-h-16"
+                placeholder="Write a comment…"
+                className="input min-h-[4rem]"
                 rows={2}
               />
               <div className="mt-2 flex justify-end">
@@ -256,7 +351,7 @@ export default function TaskDetail() {
                     <Spinner />
                   ) : (
                     <Send className="h-4 w-4" />
-                  )}
+                  )}{" "}
                   Comment
                 </button>
               </div>

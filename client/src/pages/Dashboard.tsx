@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from "react-router-dom";
 import {
   TrendingUp,
   Users,
@@ -8,53 +8,84 @@ import {
   KanbanSquare,
   Megaphone,
   ArrowRight,
-} from 'lucide-react';
-import { trpc } from '../lib/trpc';
-import { useStore } from '../lib/store';
-import { Avatar } from '../components/Avatar';
-import { InlineLoader } from '../components/Loading';
-import { formatDate, isOverdue, formatRelative } from '../lib/utils';
-import type { TaskStatus, TaskPriority } from '../../../shared/types';
+  KeyRound,
+  X,
+  Server,
+} from "lucide-react";
+import { trpc } from "../lib/trpc";
+import { useStore } from "../lib/store";
+import { InlineLoader } from "../components/Loading";
+import { formatDate, isOverdue, formatRelative } from "../lib/utils";
+import { useState } from "react";
+import type { TaskStatus, TaskPriority } from "../../../shared/types";
 
 const statusColors: Record<TaskStatus, string> = {
-  todo: 'bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-300',
-  in_progress: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
-  blocked: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
-  done: 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300',
+  todo: "bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-300",
+  in_progress: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
+  blocked: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
+  done: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300",
 };
 
 const statusLabels: Record<TaskStatus, string> = {
-  todo: 'To Do',
-  in_progress: 'In Progress',
-  blocked: 'Blocked',
-  done: 'Done',
+  todo: "To Do",
+  in_progress: "In Progress",
+  blocked: "Blocked",
+  done: "Done",
 };
 
 const priorityColors: Record<TaskPriority, string> = {
-  low: 'border-l-ink-300',
-  medium: 'border-l-blue-400',
-  high: 'border-l-orange-400',
-  urgent: 'border-l-red-500',
+  low: "border-l-ink-300",
+  medium: "border-l-blue-400",
+  high: "border-l-orange-400",
+  urgent: "border-l-red-500",
 };
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const { user } = useStore();
   const { data, isLoading } = trpc.dashboard.get.useQuery();
+  const [renderBannerDismissed, setRenderBannerDismissed] = useState(
+    () => localStorage.getItem("render_banner_dismissed") === "1",
+  );
 
   if (isLoading || !data) return <InlineLoader />;
 
+  const isAdmin = user?.role === "admin";
+  const isProduction = import.meta.env.PROD;
+  const passwordNeverChanged = user && !user.passwordChangedAt;
+
   const stats = [
-    { label: 'Active Orders', value: data.stats.activeOrders, icon: PackageCheck, color: 'text-blue-600 bg-blue-50 dark:bg-blue-950' },
-    { label: 'Pending KYC', value: data.stats.pendingKyc, icon: AlertTriangle, color: 'text-amber-600 bg-amber-50 dark:bg-amber-950' },
-    { label: 'Open Shipments', value: data.stats.openShipments, icon: TrendingUp, color: 'text-brand-600 bg-brand-50 dark:bg-brand-950' },
-    { label: 'Blocked Items', value: data.stats.unresolvedTickets, icon: AlertTriangle, color: 'text-red-600 bg-red-50 dark:bg-red-950' },
+    {
+      label: "Active Orders",
+      value: data.stats.activeOrders,
+      icon: PackageCheck,
+      color: "text-blue-600 bg-blue-50 dark:bg-blue-950",
+    },
+    {
+      label: "Pending KYC",
+      value: data.stats.pendingKyc,
+      icon: AlertTriangle,
+      color: "text-amber-600 bg-amber-50 dark:bg-amber-950",
+    },
+    {
+      label: "Open Shipments",
+      value: data.stats.openShipments,
+      icon: TrendingUp,
+      color: "text-brand-600 bg-brand-50 dark:bg-brand-950",
+    },
+    {
+      label: "Blocked Items",
+      value: data.stats.unresolvedTickets,
+      icon: AlertTriangle,
+      color: "text-red-600 bg-red-50 dark:bg-red-950",
+    },
   ];
 
   const quickLinks = [
-    { to: '/tasks', label: 'Tasks', icon: CheckSquare },
-    { to: '/board', label: 'Operations', icon: KanbanSquare },
-    { to: '/directory', label: 'Directory', icon: Users },
-    { to: '/announcements', label: 'Announcements', icon: Megaphone },
+    { to: "/tasks", label: "Tasks", icon: CheckSquare },
+    { to: "/board", label: "Operations", icon: KanbanSquare },
+    { to: "/directory", label: "Directory", icon: Users },
+    { to: "/announcements", label: "Announcements", icon: Megaphone },
   ];
 
   return (
@@ -62,12 +93,60 @@ export default function Dashboard() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold">
-          Welcome back, {user?.name?.split(' ')[0]}
+          Welcome back, {user?.name?.split(" ")[0]}
         </h1>
         <p className="text-sm text-ink-500">
           Here's what's happening across ETI & Partners today
         </p>
       </div>
+
+      {/* First-login password change prompt */}
+      {passwordNeverChanged && (
+        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
+          <KeyRound className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
+          <div className="flex-1">
+            <p className="font-medium text-amber-900 dark:text-amber-200">
+              Change your default password
+            </p>
+            <p className="mt-0.5 text-sm text-amber-700 dark:text-amber-400">
+              You're using the default password. Set a personal password to keep
+              your account secure.
+            </p>
+          </div>
+          <button
+            onClick={() => navigate("/settings")}
+            className="flex-shrink-0 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700"
+          >
+            Change now
+          </button>
+        </div>
+      )}
+
+      {/* Render free-tier banner (admin only, production only) */}
+      {isAdmin && isProduction && !renderBannerDismissed && (
+        <div className="flex items-start gap-3 rounded-lg border border-ink-200 bg-ink-50 p-4 dark:border-ink-700 dark:bg-ink-800">
+          <Server className="mt-0.5 h-5 w-5 flex-shrink-0 text-ink-500" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-ink-700 dark:text-ink-200">
+              Running on Render free tier
+            </p>
+            <p className="mt-0.5 text-xs text-ink-500">
+              ETI Hub sleeps after 15 minutes of inactivity. Upgrade to the
+              $7/month plan for always-on availability.
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              localStorage.setItem("render_banner_dismissed", "1");
+              setRenderBannerDismissed(true);
+            }}
+            className="flex-shrink-0 text-ink-400 hover:text-ink-600"
+            aria-label="Dismiss"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* Pinned Announcements */}
       {data.pinnedAnnouncements?.length > 0 && (
@@ -79,8 +158,12 @@ export default function Dashboard() {
             >
               <Megaphone className="mt-0.5 h-5 w-5 flex-shrink-0 text-brand-600" />
               <div>
-                <p className="font-medium text-brand-900 dark:text-brand-200">{ann.title}</p>
-                <p className="mt-1 text-sm text-ink-600 dark:text-ink-400 line-clamp-2">{ann.body}</p>
+                <p className="font-medium text-brand-900 dark:text-brand-200">
+                  {ann.title}
+                </p>
+                <p className="mt-1 text-sm text-ink-600 dark:text-ink-400 line-clamp-2">
+                  {ann.body}
+                </p>
                 <p className="mt-1 text-xs text-ink-400">
                   {ann.createdBy?.name} · {formatRelative(ann.createdAt)}
                 </p>
@@ -95,7 +178,9 @@ export default function Dashboard() {
         {stats.map((stat) => (
           <div key={stat.label} className="card p-4">
             <div className="flex items-center justify-between">
-              <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${stat.color}`}>
+              <div
+                className={`flex h-10 w-10 items-center justify-center rounded-lg ${stat.color}`}
+              >
                 <stat.icon className="h-5 w-5" />
               </div>
             </div>
@@ -110,7 +195,10 @@ export default function Dashboard() {
         <div className="card lg:col-span-2">
           <div className="flex items-center justify-between border-b border-ink-200 px-5 py-3 dark:border-ink-800">
             <h2 className="font-semibold">My Tasks</h2>
-            <Link to="/tasks" className="text-xs text-brand-600 hover:underline">
+            <Link
+              to="/tasks"
+              className="text-xs text-brand-600 hover:underline"
+            >
               View all
             </Link>
           </div>
@@ -126,15 +214,19 @@ export default function Dashboard() {
                     className={`flex items-center gap-3 border-l-4 px-5 py-3 transition-colors hover:bg-ink-50 dark:hover:bg-ink-800/50 ${priorityColors[priority]}`}
                   >
                     <div className="flex-1 min-w-0">
-                      <p className="truncate text-sm font-medium">{task.title}</p>
+                      <p className="truncate text-sm font-medium">
+                        {task.title}
+                      </p>
                       <div className="mt-1 flex items-center gap-2">
-                        <span className={`badge text-xs ${statusColors[status]}`}>
+                        <span
+                          className={`badge text-xs ${statusColors[status]}`}
+                        >
                           {statusLabels[status]}
                         </span>
                         <span className="text-xs text-ink-400">
                           Due {formatDate(task.dueDate)}
                         </span>
-                        {isOverdue(task.dueDate) && status !== 'done' && (
+                        {isOverdue(task.dueDate) && status !== "done" && (
                           <span className="badge bg-red-100 text-red-700 text-xs dark:bg-red-950 dark:text-red-300">
                             Overdue
                           </span>
@@ -183,7 +275,8 @@ export default function Dashboard() {
                   <div key={activity.id} className="px-5 py-3">
                     <p className="text-sm font-medium">{activity.title}</p>
                     <p className="text-xs text-ink-400">
-                      {formatRelative(activity.updatedAt)} · {statusLabels[activity.status as TaskStatus]}
+                      {formatRelative(activity.updatedAt)} ·{" "}
+                      {statusLabels[activity.status as TaskStatus]}
                     </p>
                   </div>
                 ))
