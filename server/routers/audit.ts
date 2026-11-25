@@ -36,10 +36,17 @@ export const auditRouter = router({
           id: r.id,
           action: r.action,
           target: r.target,
+          targetType: r.targetType,
+          targetId: r.targetId,
           details: r.details,
           ipAddress: r.ipAddress,
+          userAgent: r.userAgent,
           createdAt: r.createdAt.toISOString(),
-          user: r.user ? { id: r.user.id, name: r.user.name, email: r.user.email } : null,
+          user: r.user
+            ? { id: r.user.id, name: r.user.name, email: r.user.email }
+            : null,
+          // Fall back to stored userEmail if user record was deleted
+          userEmail: r.user?.email ?? r.userEmail ?? null,
         })),
         total: countRow?.count ?? 0,
         page: input.page,

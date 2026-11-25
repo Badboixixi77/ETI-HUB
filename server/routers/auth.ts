@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router, publicProcedure, protectedProcedure } from '../_core/trpc';
-import { db, schema } from '../db';
+import { db, schema, insertAuditLog } from '../db';
 import { eq } from 'drizzle-orm';
 import {
   hashPassword,
@@ -39,13 +39,17 @@ export const authRouter = router({
       const token = await createSession(user.id, { ipAddress: ip, userAgent: ua });
 
       // Audit log
-      await db.insert(schema.auditLogs).values({
+      await insertAuditLog({
         userId: user.id,
+        userEmail: user.email,
         action: 'login',
+        targetType: 'user',
+        targetId: user.id,
         target: user.email,
         ipAddress: ip,
-        details: { userAgent: ua },
-      } as any).catch(() => {});
+        userAgent: ua,
+        details: { email: user.email },
+      });
 
       ctx.res?.setHeader('Set-Cookie', buildCookie(token));
       return { user: toSafeUser(user), token };
@@ -56,11 +60,14 @@ export const authRouter = router({
     const token = ctx.req?.cookies?.['eti_hub_session'];
     if (token) {
       await destroySession(token);
-      await db.insert(schema.auditLogs).values({
+      await insertAuditLog({
         userId: ctx.user.id,
+        userEmail: ctx.user.email,
         action: 'logout',
+        targetType: 'user',
+        targetId: ctx.user.id,
         target: ctx.user.email,
-      } as any).catch(() => {});
+      });
     }
     ctx.res?.setHeader('Set-Cookie', buildCookie('', true));
     return { success: true };
@@ -94,11 +101,14 @@ export const authRouter = router({
         updatedAt: new Date(),
       } as any).where(eq(schema.users.id, user.id));
 
-      await db.insert(schema.auditLogs).values({
+      await insertAuditLog({
         userId: ctx.user.id,
-        action: 'password_changed',
+        userEmail: ctx.user.email,
+        action: 'password_change',
+        targetType: 'user',
+        targetId: ctx.user.id,
         target: ctx.user.email,
-      } as any).catch(() => {});
+      });
 
       return { success: true };
     }),
@@ -219,11 +229,15 @@ export const authRouter = router({
     const token = ctx.req?.cookies?.['eti_hub_session'];
     if (token) {
       await destroyOtherSessions(ctx.user.id, token);
-      await db.insert(schema.auditLogs).values({
+      await insertAuditLog({
         userId: ctx.user.id,
-        action: 'revoke_other_sessions',
+        userEmail: ctx.user.email,
+        action: 'admin_action',
+        targetType: 'user',
+        targetId: ctx.user.id,
         target: ctx.user.email,
-      } as any).catch(() => {});
+        details: { action: 'revoke_other_sessions' },
+      });
     }
     return { success: true };
   }),

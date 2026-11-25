@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router, protectedProcedure } from '../_core/trpc';
-import { db, schema } from '../db';
+import { db, schema, insertAuditLog } from '../db';
 import { eq, sql } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
@@ -91,6 +91,15 @@ export const documentsRouter = router({
       }),
     )
     .mutation(async ({ input, ctx }) => {
+      // Guard: S3 must be configured before attempting to generate a presigned URL
+      if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY || !process.env.S3_BUCKET) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message:
+            'Document uploads are not yet configured. Please contact your administrator.',
+        });
+      }
+
       const key = `uploads/${ctx.user!.id}/${Date.now()}-${input.fileName}`;
 
       const command = new PutObjectCommand({
@@ -134,12 +143,15 @@ export const documentsRouter = router({
       } as any);
 
       // Audit log
-      await db.insert(schema.auditLogs).values({
+      await insertAuditLog({
         userId: ctx.user!.id,
-        action: 'document_uploaded',
+        userEmail: ctx.user!.email,
+        action: 'document_upload',
+        targetType: 'document',
+        targetId: doc!.id,
         target: input.name,
         details: { category: input.category, fileKey: input.fileKey },
-      } as any).catch(() => {});
+      });
 
       return doc!;
     }),
@@ -188,7 +200,28 @@ export const documentsRouter = router({
       if (ctx.user!.role !== 'admin') {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Only admins can delete documents' });
       }
+
+      // Fetch before deleting so we can audit the name
+      const [doc] = await db
+        .select()
+        .from(schema.documents)
+        .where(eq(schema.documents.id, input.id))
+        .limit(1);
+
       await db.delete(schema.documents).where(eq(schema.documents.id, input.id));
+
+      if (doc) {
+        await insertAuditLog({
+          userId: ctx.user!.id,
+          userEmail: ctx.user!.email,
+          action: 'document_delete',
+          targetType: 'document',
+          targetId: input.id,
+          target: doc.name,
+          details: { category: doc.category },
+        });
+      }
+
       return { success: true };
     }),
 });

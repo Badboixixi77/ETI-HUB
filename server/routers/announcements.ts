@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router, protectedProcedure, roleProcedure } from '../_core/trpc';
-import { db, schema } from '../db';
+import { db, schema, insertAuditLog } from '../db';
 import { eq, sql } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 import { sendAnnouncementEmail } from '../email';
@@ -69,11 +69,14 @@ export const announcementsRouter = router({
         } as any)
         .returning();
 
-      await db.insert(schema.auditLogs).values({
+      await insertAuditLog({
         userId: ctx.user!.id,
-        action: 'announcement_created',
+        userEmail: ctx.user!.email,
+        action: 'announcement_create',
+        targetType: 'announcement',
+        targetId: announcement!.id,
         target: input.title,
-      } as any).catch(() => {});
+      });
 
       // Create notifications + send emails for all active users
       const users = await db
@@ -136,8 +139,27 @@ export const announcementsRouter = router({
   // Delete announcement (admin only)
   delete: roleProcedure('admin')
     .input(z.object({ id: z.string().uuid() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      // Fetch before deleting for the audit entry
+      const [announcement] = await db
+        .select()
+        .from(schema.announcements)
+        .where(eq(schema.announcements.id, input.id))
+        .limit(1);
+
       await db.delete(schema.announcements).where(eq(schema.announcements.id, input.id));
+
+      if (announcement) {
+        await insertAuditLog({
+          userId: ctx.user!.id,
+          userEmail: ctx.user!.email,
+          action: 'announcement_delete',
+          targetType: 'announcement',
+          targetId: input.id,
+          target: announcement.title,
+        });
+      }
+
       return { success: true };
     }),
 

@@ -100,24 +100,21 @@ export default function Dashboard() {
         </p>
       </div>
 
-      {/* First-login password change prompt */}
+      {/* Security Alert: First-login password change banner */}
       {passwordNeverChanged && (
-        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
-          <KeyRound className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
+        <div className="flex items-start gap-3 rounded-lg border border-red-300 bg-red-50 p-4 dark:border-red-800 dark:bg-red-950/40">
+          <KeyRound className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600" />
           <div className="flex-1">
-            <p className="font-medium text-amber-900 dark:text-amber-200">
-              Change your default password
-            </p>
-            <p className="mt-0.5 text-sm text-amber-700 dark:text-amber-400">
-              You're using the default password. Set a personal password to keep
-              your account secure.
+            <p className="font-semibold text-red-900 dark:text-red-200">
+              Security Alert: You are using the default password. Please change
+              your password immediately.
             </p>
           </div>
           <button
-            onClick={() => navigate("/settings")}
-            className="flex-shrink-0 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700"
+            onClick={() => navigate("/settings?tab=profile")}
+            className="flex-shrink-0 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
           >
-            Change now
+            Change Password Now
           </button>
         </div>
       )}

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router, protectedProcedure } from '../_core/trpc';
-import { db, schema } from '../db';
+import { db, schema, insertAuditLog } from '../db';
 import { eq, or, sql } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 import { createNotification } from './notifications';
@@ -173,12 +173,15 @@ export const tasksRouter = router({
       if (existing.createdBy !== ctx.user!.id && ctx.user!.role !== 'admin') {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Only the task creator or an admin can delete this task' });
       }
-      await db.insert(schema.auditLogs).values({
+      await insertAuditLog({
         userId: ctx.user!.id,
-        action: 'task_deleted',
+        userEmail: ctx.user!.email,
+        action: 'task_delete',
+        targetType: 'task',
+        targetId: input.id,
         target: existing.title,
         details: { taskId: input.id },
-      } as any).catch(() => {});
+      });
       await db.delete(schema.tasks).where(eq(schema.tasks.id, input.id));
       return { success: true };
     }),

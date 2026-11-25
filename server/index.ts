@@ -156,9 +156,31 @@ if (isProd) {
 
 // ── Start ─────────────────────────────────────────────────────────────
 
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
   console.log(`ETI Hub server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+
+  // ── Security warning: users with default passwords ────────────────
+  try {
+    const { db, schema } = await import('./db');
+    const { isNull } = await import('drizzle-orm');
+    const defaultPasswordUsers = await db
+      .select({ id: schema.users.id, email: schema.users.email, name: schema.users.name })
+      .from(schema.users)
+      .where(isNull(schema.users.passwordChangedAt));
+
+    if (defaultPasswordUsers.length > 0) {
+      console.warn(
+        `\n⚠️  SECURITY WARNING: ${defaultPasswordUsers.length} user(s) have never changed their default password:`
+      );
+      for (const u of defaultPasswordUsers) {
+        console.warn(`   - ${u.name} <${u.email}> (id: ${u.id})`);
+      }
+      console.warn(`   These accounts are at risk. Notify the users to change their passwords.\n`);
+    }
+  } catch {
+    // DB may not be available yet (first deploy) — swallow silently
+  }
 });
 
 export { io };

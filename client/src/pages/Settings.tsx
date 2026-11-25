@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   UserPlus,
   UserCog,
@@ -44,8 +45,18 @@ const roleColors: Record<Role, string> = {
 
 export default function Settings() {
   const { user } = useStore();
-  const [tab, setTab] = useState<Tab>("profile");
+  const [searchParams] = useSearchParams();
   const isAdmin = user?.role === "admin";
+
+  // Allow deep-linking to a specific tab via ?tab=profile etc.
+  const initialTab = (searchParams.get("tab") as Tab) || "profile";
+  const [tab, setTab] = useState<Tab>(initialTab);
+
+  // Sync tab if query param changes (e.g. from the password banner link)
+  useEffect(() => {
+    const t = searchParams.get("tab") as Tab;
+    if (t) setTab(t);
+  }, [searchParams]);
 
   const tabs = [
     { key: "profile" as Tab, label: "Profile", icon: UserCog },
@@ -118,6 +129,11 @@ function ProfileTab() {
       toast.success("Password changed");
       setOldPassword("");
       setNewPassword("");
+      // Update the local user store to clear the "default password" warning
+      if (user) {
+        setUser({ ...user, passwordChangedAt: new Date().toISOString() });
+      }
+      utils.auth.me.invalidate();
     },
     onError: (err) => toast.error(err.message),
   });
@@ -556,7 +572,10 @@ function SessionsTab() {
   const utils = trpc.useUtils();
   const { data: sessions, isLoading } = trpc.auth.listSessions.useQuery();
   const revokeOthers = trpc.auth.revokeOtherSessions.useMutation({
-    onSuccess: () => { utils.auth.listSessions.invalidate(); toast.success("All other sessions signed out"); },
+    onSuccess: () => {
+      utils.auth.listSessions.invalidate();
+      toast.success("All other sessions signed out");
+    },
     onError: (err) => toast.error(err.message),
   });
 
@@ -577,20 +596,51 @@ function SessionsTab() {
           <Shield className="h-4 w-4" /> Active Sessions
         </h2>
         {sessions && sessions.length > 1 && (
-          <button onClick={() => revokeOthers.mutate()} className="btn btn-secondary text-sm" disabled={revokeOthers.isPending}>
-            {revokeOthers.isPending ? <Spinner /> : <LogOut className="h-4 w-4" />} Sign out all other devices
+          <button
+            onClick={() => revokeOthers.mutate()}
+            className="btn btn-secondary text-sm"
+            disabled={revokeOthers.isPending}
+          >
+            {revokeOthers.isPending ? (
+              <Spinner />
+            ) : (
+              <LogOut className="h-4 w-4" />
+            )}{" "}
+            Sign out all other devices
           </button>
         )}
       </div>
-      {isLoading ? <InlineLoader /> : (
+      {isLoading ? (
+        <InlineLoader />
+      ) : (
         <div className="space-y-3">
           {sessions?.map((s) => (
-            <div key={s.id} className={cn("flex items-start gap-3 rounded-lg border p-4", s.isCurrent ? "border-brand-300 bg-brand-50 dark:border-brand-800 dark:bg-brand-950/20" : "border-ink-200 dark:border-ink-700")}>
+            <div
+              key={s.id}
+              className={cn(
+                "flex items-start gap-3 rounded-lg border p-4",
+                s.isCurrent
+                  ? "border-brand-300 bg-brand-50 dark:border-brand-800 dark:bg-brand-950/20"
+                  : "border-ink-200 dark:border-ink-700",
+              )}
+            >
               <Monitor className="mt-0.5 h-5 w-5 flex-shrink-0 text-ink-400" />
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium">{getDeviceName(s.userAgent)} {s.isCurrent && <span className="ml-2 badge bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">Current</span>}</p>
-                <p className="text-xs text-ink-400">{s.ipAddress ?? "IP unknown"} · Last active {formatRelative(s.lastActiveAt)}</p>
-                <p className="text-xs text-ink-400">Started {formatRelative(s.createdAt)}</p>
+                <p className="text-sm font-medium">
+                  {getDeviceName(s.userAgent)}{" "}
+                  {s.isCurrent && (
+                    <span className="ml-2 badge bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
+                      Current
+                    </span>
+                  )}
+                </p>
+                <p className="text-xs text-ink-400">
+                  {s.ipAddress ?? "IP unknown"} · Last active{" "}
+                  {formatRelative(s.lastActiveAt)}
+                </p>
+                <p className="text-xs text-ink-400">
+                  Started {formatRelative(s.createdAt)}
+                </p>
               </div>
             </div>
           ))}
@@ -603,43 +653,115 @@ function SessionsTab() {
 function AuditTab() {
   const [page, setPage] = useState(1);
   const [filterAction, setFilterAction] = useState("");
-  const { data, isLoading } = trpc.audit.list.useQuery({ page, limit: 25, action: filterAction || undefined });
+  const { data, isLoading } = trpc.audit.list.useQuery({
+    page,
+    limit: 25,
+    action: filterAction || undefined,
+  });
 
-  const actionOptions = ["login","logout","password_changed","task_deleted","document_uploaded","announcement_created","revoke_other_sessions","role_changed"];
+  const actionOptions = [
+    "login",
+    "logout",
+    "password_change",
+    "role_change",
+    "user_invite",
+    "user_deactivate",
+    "document_upload",
+    "document_delete",
+    "announcement_create",
+    "announcement_delete",
+    "task_delete",
+    "admin_action",
+    // Legacy action names
+    "password_changed",
+    "task_deleted",
+    "document_uploaded",
+    "announcement_created",
+    "revoke_other_sessions",
+    "role_changed",
+  ];
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="flex items-center gap-2 font-semibold"><ClipboardList className="h-4 w-4" /> Audit Log</h2>
-        <select className="input w-auto py-1.5 text-sm" value={filterAction} onChange={(e) => { setFilterAction(e.target.value); setPage(1); }}>
+        <h2 className="flex items-center gap-2 font-semibold">
+          <ClipboardList className="h-4 w-4" /> Audit Log
+        </h2>
+        <select
+          className="input w-auto py-1.5 text-sm"
+          value={filterAction}
+          onChange={(e) => {
+            setFilterAction(e.target.value);
+            setPage(1);
+          }}
+        >
           <option value="">All actions</option>
-          {actionOptions.map((a) => <option key={a} value={a}>{a.replace(/_/g, " ")}</option>)}
+          {actionOptions.map((a) => (
+            <option key={a} value={a}>
+              {a.replace(/_/g, " ")}
+            </option>
+          ))}
         </select>
       </div>
-      {isLoading ? <InlineLoader /> : (
+      {isLoading ? (
+        <InlineLoader />
+      ) : (
         <div className="card divide-y divide-ink-100 dark:divide-ink-800">
-          {data?.rows.length ? data.rows.map((row) => (
-            <div key={row.id} className="flex items-start gap-3 px-4 py-3">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="badge bg-ink-100 text-ink-700 dark:bg-ink-800 dark:text-ink-300 text-xs">{row.action.replace(/_/g, " ")}</span>
-                  {row.target && <span className="text-sm font-medium truncate">{row.target}</span>}
+          {data?.rows.length ? (
+            data.rows.map((row) => (
+              <div key={row.id} className="flex items-start gap-3 px-4 py-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="badge bg-ink-100 text-ink-700 dark:bg-ink-800 dark:text-ink-300 text-xs">
+                      {row.action.replace(/_/g, " ")}
+                    </span>
+                    {row.target && (
+                      <span className="text-sm font-medium truncate">
+                        {row.target}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-xs text-ink-400">
+                    {row.user?.name ?? row.userEmail ?? "System"} ·{" "}
+                    {row.ipAddress ?? "unknown IP"} ·{" "}
+                    {formatRelative(row.createdAt)}
+                  </p>
+                  {row.details &&
+                    Object.keys(row.details as Record<string, unknown>).length >
+                      0 && (
+                      <p className="mt-0.5 truncate text-xs text-ink-400">
+                        {JSON.stringify(row.details)}
+                      </p>
+                    )}
                 </div>
-                <p className="mt-0.5 text-xs text-ink-400">
-                  {row.user?.name ?? "System"} · {row.ipAddress ?? "unknown IP"} · {formatRelative(row.createdAt)}
-                </p>
               </div>
+            ))
+          ) : (
+            <div className="px-4 py-10 text-center text-sm text-ink-400">
+              No audit logs yet
             </div>
-          )) : (
-            <div className="px-4 py-10 text-center text-sm text-ink-400">No audit logs yet</div>
           )}
         </div>
       )}
       {data && data.pages > 1 && (
         <div className="flex items-center justify-center gap-3">
-          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="btn btn-secondary">Prev</button>
-          <span className="text-sm text-ink-500">Page {page} of {data.pages}</span>
-          <button onClick={() => setPage((p) => Math.min(data.pages, p + 1))} disabled={page === data.pages} className="btn btn-secondary">Next</button>
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="btn btn-secondary"
+          >
+            Prev
+          </button>
+          <span className="text-sm text-ink-500">
+            Page {page} of {data.pages}
+          </span>
+          <button
+            onClick={() => setPage((p) => Math.min(data.pages, p + 1))}
+            disabled={page === data.pages}
+            className="btn btn-secondary"
+          >
+            Next
+          </button>
         </div>
       )}
     </div>

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { router, protectedProcedure, roleProcedure } from '../_core/trpc';
-import { db, schema } from '../db';
+import { db, schema, insertAuditLog } from '../db';
 import { eq, sql } from 'drizzle-orm';
 import { hashPassword, toSafeUser } from '../_core/auth';
 import { TRPCError } from '@trpc/server';
@@ -47,7 +47,7 @@ export const usersRouter = router({
         password: z.string().min(8),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const existing = await db
         .select()
         .from(schema.users)
@@ -73,6 +73,17 @@ export const usersRouter = router({
 
       // Create default notification preferences
       await db.insert(schema.notificationPreferences).values({ userId: user!.id });
+
+      // Audit log
+      await insertAuditLog({
+        userId: ctx.user!.id,
+        userEmail: ctx.user!.email,
+        action: 'user_invite',
+        targetType: 'user',
+        targetId: user!.id,
+        target: user!.email,
+        details: { name: user!.name, role: user!.role },
+      });
 
       return toSafeUser(user!);
     }),
@@ -101,12 +112,15 @@ export const usersRouter = router({
 
       // Audit role changes
       if (data.role) {
-        await db.insert(schema.auditLogs).values({
+        await insertAuditLog({
           userId: ctx.user!.id,
-          action: 'role_changed',
+          userEmail: ctx.user!.email,
+          action: 'role_change',
+          targetType: 'user',
+          targetId: updated.id,
           target: updated.email,
           details: { newRole: data.role },
-        } as any).catch(() => {});
+        });
       }
 
       return toSafeUser(updated);
@@ -115,11 +129,31 @@ export const usersRouter = router({
   // Deactivate a user (admin only)
   deactivate: roleProcedure('admin')
     .input(z.object({ id: z.string().uuid() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      // Fetch user before deactivation so we can audit with their details
+      const [target] = await db
+        .select()
+        .from(schema.users)
+        .where(eq(schema.users.id, input.id))
+        .limit(1);
+      if (!target) throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
+
       await db
         .update(schema.users)
         .set({ isActive: false, updatedAt: new Date() } as any)
         .where(eq(schema.users.id, input.id));
+
+      // Audit log
+      await insertAuditLog({
+        userId: ctx.user!.id,
+        userEmail: ctx.user!.email,
+        action: 'user_deactivate',
+        targetType: 'user',
+        targetId: target.id,
+        target: target.email,
+        details: { name: target.name, email: target.email, role: target.role },
+      });
+
       return { success: true };
     }),
 });

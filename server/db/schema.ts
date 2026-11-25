@@ -122,13 +122,41 @@ export const notificationPreferences = pgTable('notification_preferences', {
 
 // ── Audit Log ────────────────────────────────────────────────────────
 
+export const auditActionEnum = pgEnum('audit_action', [
+  'login',
+  'logout',
+  'password_change',
+  'role_change',
+  'user_invite',
+  'user_deactivate',
+  'document_upload',
+  'document_delete',
+  'document_access',
+  'announcement_create',
+  'announcement_delete',
+  'task_delete',
+  'admin_action',
+  // Legacy action names (kept for backward compat)
+  'password_changed',
+  'task_deleted',
+  'document_uploaded',
+  'announcement_created',
+  'role_changed',
+  'revoke_other_sessions',
+]);
+
 export const auditLogs = pgTable('audit_logs', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  userEmail: varchar('user_email', { length: 255 }),
   action: varchar('action', { length: 100 }).notNull(),
+  targetType: varchar('target_type', { length: 100 }),
+  targetId: varchar('target_id', { length: 255 }),
+  // Legacy field kept for backward compat with existing code
   target: varchar('target', { length: 255 }),
   details: jsonb('details'),
   ipAddress: varchar('ip_address', { length: 50 }),
+  userAgent: varchar('user_agent', { length: 500 }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
