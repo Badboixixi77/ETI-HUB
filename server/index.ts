@@ -160,6 +160,24 @@ server.listen(PORT, async () => {
   console.log(`ETI Hub server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 
+  // ── Auto-migrate: ensure all schema columns exist ─────────────────
+  // Runs safe ALTER TABLE ADD COLUMN IF NOT EXISTS statements so new columns
+  // added to the schema are created on the live DB without a manual migration step.
+  try {
+    const { db } = await import('./db');
+    const { sql } = await import('drizzle-orm');
+    // Add password_changed_at if it doesn't exist
+    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS "passwordChangedAt" timestamp`);
+    // Add audit log columns if they don't exist
+    await db.execute(sql`ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS "userEmail" varchar(320)`);
+    await db.execute(sql`ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS "targetType" varchar(64)`);
+    await db.execute(sql`ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS "targetId" varchar(255)`);
+    await db.execute(sql`ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS "userAgent" text`);
+    console.log('[Startup] Schema columns verified ✅');
+  } catch (err) {
+    console.warn('[Startup] Schema migration warning:', (err as Error).message?.slice(0, 100));
+  }
+
   // ── Security warning: users with default passwords ────────────────
   try {
     const { db, schema } = await import('./db');
