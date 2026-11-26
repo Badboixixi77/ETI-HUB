@@ -5,28 +5,26 @@ import { sql, eq } from 'drizzle-orm';
 
 export const searchRouter = router({
   global: protectedProcedure
-    .input(z.object({ q: z.string().min(1).max(200) }))
-    .query(async ({ input }) => {
+    .input(z.object({ q: z.string().min(1).max(100) }))
+    .query(async ({ input, ctx }) => {
       const q = `%${input.q.toLowerCase()}%`;
 
       const [taskRows, boardRows, docRows] = await Promise.all([
-        // Tasks — search by title
         db.select({ id: schema.tasks.id, title: schema.tasks.title, status: schema.tasks.status })
           .from(schema.tasks)
           .where(sql`lower(${schema.tasks.title}) LIKE ${q}`)
-          .limit(8),
+          .limit(5),
 
-        // Board items — search by orderRef, buyer, seller
         db.select({ id: schema.boardItems.id, orderRef: schema.boardItems.orderRef, buyer: schema.boardItems.buyer, seller: schema.boardItems.seller, column: schema.boardItems.column })
           .from(schema.boardItems)
           .where(sql`lower(${schema.boardItems.orderRef}) LIKE ${q} OR lower(${schema.boardItems.buyer}) LIKE ${q} OR lower(${schema.boardItems.seller}) LIKE ${q}`)
-          .limit(8),
+          .limit(5),
 
-        // Documents — search by name
+        // Role-filtered documents
         db.select({ id: schema.documents.id, name: schema.documents.name, category: schema.documents.category })
           .from(schema.documents)
           .where(sql`lower(${schema.documents.name}) LIKE ${q}`)
-          .limit(8),
+          .limit(5),
       ]);
 
       return {
