@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { db, schema } from '../db';
 import { eq, sql } from 'drizzle-orm';
 
-// Internal helper to create a notification
+// ── Internal helper: create an in-app notification + push via socket ──
+
 export async function createNotification(params: {
   userId: string;
   type: string;
@@ -10,6 +11,7 @@ export async function createNotification(params: {
   body?: string;
   link?: string;
 }) {
+  // Write to DB
   await db.insert(schema.notifications).values({
     userId: params.userId,
     type: params.type,
@@ -17,13 +19,26 @@ export async function createNotification(params: {
     body: params.body ?? null,
     link: params.link ?? null,
   } as any);
+
+  // Push in real-time via Socket.IO (lazy import avoids circular dep)
+  try {
+    const { pushNotificationToUser } = await import('../index');
+    pushNotificationToUser(params.userId, {
+      type: params.type,
+      title: params.title,
+      body: params.body,
+      link: params.link,
+    });
+  } catch {
+    // Socket push is best-effort — never break the main operation
+  }
 }
 
-// Notification router (kept simple — could be expanded)
+// ── Notification router ───────────────────────────────────────────────
+
 import { router, protectedProcedure } from '../_core/trpc';
 
 export const notificationsRouter = router({
-  // List notifications for current user
   list: protectedProcedure.query(async ({ ctx }) => {
     const rows = await db
       .select()
@@ -34,7 +49,6 @@ export const notificationsRouter = router({
     return rows;
   }),
 
-  // Unread count
   unreadCount: protectedProcedure.query(async ({ ctx }) => {
     const [row] = await db
       .select({ count: sql<number>`count(*)::int` })
@@ -43,10 +57,9 @@ export const notificationsRouter = router({
     return row?.count ?? 0;
   }),
 
-  // Mark as read
   markRead: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
-    .mutation(async ({ input, ctx }) => {
+    .mutation(async ({ input }) => {
       await db
         .update(schema.notifications)
         .set({ isRead: true } as any)
@@ -54,7 +67,6 @@ export const notificationsRouter = router({
       return { success: true };
     }),
 
-  // Mark all as read
   markAllRead: protectedProcedure.mutation(async ({ ctx }) => {
     await db
       .update(schema.notifications)

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Menu, Bell, Moon, Sun, LogOut, User as UserIcon } from "lucide-react";
 import { useStore } from "../lib/store";
 import { trpc } from "../lib/trpc";
-import { disconnectSocket } from "../lib/socket";
+import { disconnectSocket, getSocket } from "../lib/socket";
 import { Avatar } from "./Avatar";
 import { toast } from "./Toast";
 import { formatRelative } from "../lib/utils";
@@ -19,10 +19,28 @@ export default function Topbar() {
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   const utils = trpc.useUtils();
+
+  // Poll every 10s as fallback; socket will push instantly on new notifications
   const { data: notifications } = trpc.notifications.list.useQuery(undefined, {
-    refetchInterval: 30000,
+    refetchInterval: 10000,
   });
   const unreadCount = notifications?.filter((n) => !n.isRead).length ?? 0;
+
+  // ── Real-time notification push via Socket.IO ──────────────────────
+  useEffect(() => {
+    if (!user) return;
+    const socket = getSocket();
+
+    const handleNotification = () => {
+      // Immediately refresh the notification list when server pushes one
+      utils.notifications.list.invalidate();
+    };
+
+    socket.on("notification", handleNotification);
+    return () => {
+      socket.off("notification", handleNotification);
+    };
+  }, [user, utils]);
 
   const markAllRead = trpc.notifications.markAllRead.useMutation({
     onSuccess: () => utils.notifications.list.invalidate(),
@@ -37,6 +55,7 @@ export default function Topbar() {
     },
   });
 
+  // Close dropdowns on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (notifRef.current && !notifRef.current.contains(e.target as Node))
@@ -80,7 +99,7 @@ export default function Topbar() {
           )}
         </button>
 
-        {/* Notifications */}
+        {/* Notifications bell */}
         <div ref={notifRef} className="relative">
           <button
             onClick={() => setNotifOpen(!notifOpen)}
@@ -96,7 +115,7 @@ export default function Topbar() {
           </button>
 
           {notifOpen && (
-            <div className="absolute right-0 top-full mt-2 w-[calc(100vw-2rem)] max-w-xs rounded-xl border border-ink-200 bg-white shadow-lg dark:border-ink-800 dark:bg-ink-900 sm:w-80">
+            <div className="absolute right-0 top-full z-50 mt-2 w-[calc(100vw-2rem)] max-w-xs rounded-xl border border-ink-200 bg-white shadow-lg dark:border-ink-800 dark:bg-ink-900 sm:w-80">
               <div className="flex items-center justify-between border-b border-ink-200 px-4 py-3 dark:border-ink-800">
                 <h3 className="text-sm font-semibold">Notifications</h3>
                 {unreadCount > 0 && (
@@ -159,7 +178,7 @@ export default function Topbar() {
           </button>
 
           {userMenuOpen && (
-            <div className="absolute right-0 top-full mt-2 w-56 rounded-xl border border-ink-200 bg-white shadow-lg dark:border-ink-800 dark:bg-ink-900">
+            <div className="absolute right-0 top-full z-50 mt-2 w-56 rounded-xl border border-ink-200 bg-white shadow-lg dark:border-ink-800 dark:bg-ink-900">
               <div className="border-b border-ink-200 px-4 py-3 dark:border-ink-800">
                 <p className="truncate text-sm font-semibold">{user?.name}</p>
                 <p className="truncate text-xs text-ink-400">{user?.email}</p>

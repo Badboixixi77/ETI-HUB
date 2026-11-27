@@ -14,24 +14,52 @@ export const tasksRouter = router({
       status: z.enum(['todo', 'in_progress', 'blocked', 'done']).optional(),
       priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
       mine: z.boolean().optional(),
+      // Admin-only: view all tasks across the team
+      all: z.boolean().optional(),
     }).optional())
     .query(async ({ input, ctx }) => {
+      const isAdmin = ctx.user!.role === 'admin';
+
       return db.query.tasks.findMany({
         with: {
           assignee: true,
           creator: true,
           comments: { with: { user: true }, orderBy: (c, { asc }) => [asc(c.createdAt)] },
         },
-        where: (task, { eq, and }) => {
+        where: (task, { eq, and, or }) => {
           const conditions: any[] = [];
-          if (input?.mine) {
-            conditions.push(or(eq(task.assignedTo, ctx.user!.id), eq(task.createdBy, ctx.user!.id))!);
-          } else {
-            if (input?.assignedTo) conditions.push(eq(task.assignedTo, input.assignedTo));
-            if (input?.createdBy) conditions.push(eq(task.createdBy, input.createdBy));
+
+          // ── Visibility: non-admins only see tasks they own ──────────
+          // Admin with `all: true` can see everything.
+          // Admin without `all` still defaults to their own tasks.
+          // Non-admins ALWAYS only see tasks where they are assignee or creator.
+          if (!isAdmin || !input?.all) {
+            // Restrict to tasks the current user is involved in
+            conditions.push(
+              or(
+                eq(task.assignedTo, ctx.user!.id),
+                eq(task.createdBy, ctx.user!.id),
+              )!,
+            );
           }
+
+          // ── Additional filters ───────────────────────────────────────
+          // `mine` is now redundant for non-admins (always enforced above),
+          // but we keep it so the UI "Only mine" toggle still works for admins.
+          if (input?.mine && isAdmin) {
+            conditions.push(
+              or(
+                eq(task.assignedTo, ctx.user!.id),
+                eq(task.createdBy, ctx.user!.id),
+              )!,
+            );
+          }
+
+          if (input?.assignedTo && isAdmin) conditions.push(eq(task.assignedTo, input.assignedTo));
+          if (input?.createdBy && isAdmin) conditions.push(eq(task.createdBy, input.createdBy));
           if (input?.status) conditions.push(eq(task.status, input.status));
           if (input?.priority) conditions.push(eq(task.priority, input.priority));
+
           return and(...conditions);
         },
         orderBy: (task, { desc }) => [desc(task.createdAt)],
@@ -40,7 +68,7 @@ export const tasksRouter = router({
 
   getById: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const task = await db.query.tasks.findFirst({
         with: {
           assignee: true,
@@ -49,7 +77,22 @@ export const tasksRouter = router({
         },
         where: (t, { eq }) => eq(t.id, input.id),
       });
+
       if (!task) throw new TRPCError({ code: 'NOT_FOUND', message: 'Task not found' });
+
+      // ── Access control: only assignee, creator, or admin ────────────
+      const isInvolved =
+        task.assignedTo === ctx.user!.id ||
+        task.createdBy === ctx.user!.id ||
+        ctx.user!.role === 'admin';
+
+      if (!isInvolved) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You do not have access to this task',
+        });
+      }
+
       return task;
     }),
 
@@ -79,7 +122,6 @@ export const tasksRouter = router({
           link: `/tasks/${task.id}`,
         });
 
-        // Send email if preference enabled
         const [assignee] = await db.select().from(schema.users).where(eq(schema.users.id, input.assignedTo)).limit(1);
         const [prefs] = await db.select().from(schema.notificationPreferences).where(eq(schema.notificationPreferences.userId, input.assignedTo)).limit(1);
         if (assignee && prefs?.emailOnTaskAssigned) {
@@ -111,6 +153,16 @@ export const tasksRouter = router({
       const existing = await db.query.tasks.findFirst({ where: (t, { eq }) => eq(t.id, id) });
       if (!existing) throw new TRPCError({ code: 'NOT_FOUND', message: 'Task not found' });
 
+      // Only creator, assignee, or admin can update
+      const canUpdate =
+        existing.createdBy === ctx.user!.id ||
+        existing.assignedTo === ctx.user!.id ||
+        ctx.user!.role === 'admin';
+
+      if (!canUpdate) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'You do not have access to this task' });
+      }
+
       const [updated] = await db.update(schema.tasks).set({
         ...data,
         dueDate: data.dueDate !== undefined ? (data.dueDate ? new Date(data.dueDate) : null) : existing.dueDate,
@@ -139,7 +191,7 @@ export const tasksRouter = router({
         }
       }
 
-      // Notify & email old assignee on status change
+      // Notify & email assignee on status change
       if (data.status && data.status !== existing.status && existing.assignedTo && existing.assignedTo !== ctx.user!.id) {
         const statusLabel = data.status.replace('_', ' ');
         await createNotification({
@@ -189,20 +241,48 @@ export const tasksRouter = router({
   addComment: protectedProcedure
     .input(z.object({ taskId: z.string().uuid(), content: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
+      // Must have access to the task before commenting
+      const task = await db.query.tasks.findFirst({ where: (t, { eq }) => eq(t.id, input.taskId) });
+      if (!task) throw new TRPCError({ code: 'NOT_FOUND', message: 'Task not found' });
+
+      const canComment =
+        task.assignedTo === ctx.user!.id ||
+        task.createdBy === ctx.user!.id ||
+        ctx.user!.role === 'admin';
+
+      if (!canComment) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'You do not have access to this task' });
+      }
+
       const [comment] = await db.insert(schema.taskComments)
         .values({ ...input, userId: ctx.user!.id } as any)
         .returning();
       return comment!;
     }),
 
-  stats: protectedProcedure.query(async () => {
+  stats: protectedProcedure.query(async ({ ctx }) => {
+    const isAdmin = ctx.user!.role === 'admin';
+
+    // For non-admins, stats only count their own tasks
+    const userFilter = isAdmin ? undefined : ctx.user!.id;
+
+    const baseWhere = userFilter
+      ? (t: any) => or(eq(t.assignedTo, userFilter), eq(t.createdBy, userFilter))
+      : undefined;
+
     const [total, todo, inProgress, blocked, done] = await Promise.all([
-      db.select({ count: sql<number>`count(*)::int` }).from(schema.tasks),
-      db.select({ count: sql<number>`count(*)::int` }).from(schema.tasks).where(eq(schema.tasks.status, 'todo')),
-      db.select({ count: sql<number>`count(*)::int` }).from(schema.tasks).where(eq(schema.tasks.status, 'in_progress')),
-      db.select({ count: sql<number>`count(*)::int` }).from(schema.tasks).where(eq(schema.tasks.status, 'blocked')),
-      db.select({ count: sql<number>`count(*)::int` }).from(schema.tasks).where(eq(schema.tasks.status, 'done')),
+      db.select({ count: sql<number>`count(*)::int` }).from(schema.tasks)
+        .where(userFilter ? or(eq(schema.tasks.assignedTo, userFilter), eq(schema.tasks.createdBy, userFilter)) : undefined),
+      db.select({ count: sql<number>`count(*)::int` }).from(schema.tasks)
+        .where(userFilter ? sql`(assigned_to = ${userFilter} OR created_by = ${userFilter}) AND status = 'todo'` : eq(schema.tasks.status, 'todo')),
+      db.select({ count: sql<number>`count(*)::int` }).from(schema.tasks)
+        .where(userFilter ? sql`(assigned_to = ${userFilter} OR created_by = ${userFilter}) AND status = 'in_progress'` : eq(schema.tasks.status, 'in_progress')),
+      db.select({ count: sql<number>`count(*)::int` }).from(schema.tasks)
+        .where(userFilter ? sql`(assigned_to = ${userFilter} OR created_by = ${userFilter}) AND status = 'blocked'` : eq(schema.tasks.status, 'blocked')),
+      db.select({ count: sql<number>`count(*)::int` }).from(schema.tasks)
+        .where(userFilter ? sql`(assigned_to = ${userFilter} OR created_by = ${userFilter}) AND status = 'done'` : eq(schema.tasks.status, 'done')),
     ]);
+
     return {
       total: total[0]?.count ?? 0,
       todo: todo[0]?.count ?? 0,

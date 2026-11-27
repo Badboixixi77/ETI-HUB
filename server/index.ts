@@ -98,8 +98,8 @@ const io = new SocketServer(server, {
   },
 });
 
-// Track online users
-const onlineUsers = new Map<string, string>(); // userId -> socketId
+// Track online users: userId → socket id
+const onlineUsers = new Map<string, string>();
 
 // Extend Socket to carry userId
 interface AuthenticatedSocket extends Socket {
@@ -107,10 +107,11 @@ interface AuthenticatedSocket extends Socket {
 }
 
 io.on('connection', (socket: AuthenticatedSocket) => {
-  // Client sends their userId after connecting
   socket.on('auth', (userId: string) => {
     onlineUsers.set(userId, socket.id);
     socket.userId = userId;
+    // Join a personal room so we can push directly to this user
+    socket.join(`user:${userId}`);
     io.emit('presence', { userId, online: true });
   });
 
@@ -121,26 +122,35 @@ io.on('connection', (socket: AuthenticatedSocket) => {
     }
   });
 
-  // Join a channel room
   socket.on('join_channel', (channelId: string) => {
     socket.join(`channel:${channelId}`);
   });
 
-  // Leave a channel room
   socket.on('leave_channel', (channelId: string) => {
     socket.leave(`channel:${channelId}`);
   });
 
-  // Broadcast new message to channel members
   socket.on('message_sent', (data: { channelId: string; message: unknown }) => {
     socket.to(`channel:${data.channelId}`).emit('new_message', data.message);
   });
 
-  // Broadcast typing indicator
   socket.on('typing', (data: { channelId: string; userName: string; isTyping: boolean }) => {
     socket.to(`channel:${data.channelId}`).emit('typing', data);
   });
 });
+
+/**
+ * Push a real-time notification to a specific user via Socket.IO.
+ * Call this alongside createNotification() so the bell updates instantly.
+ */
+export function pushNotificationToUser(userId: string, notification: {
+  type: string;
+  title: string;
+  body?: string;
+  link?: string;
+}) {
+  io.to(`user:${userId}`).emit('notification', notification);
+}
 
 // ── Serve static client in production ────────────────────────────────
 
