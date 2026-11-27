@@ -1,32 +1,59 @@
-import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Mail, Phone, Briefcase, Activity } from 'lucide-react';
-import { trpc } from '../lib/trpc';
-import { Avatar } from '../components/Avatar';
-import { InlineLoader } from '../components/Loading';
-import { formatDate, formatRelative } from '../lib/utils';
+import { Link, useParams, useNavigate } from "react-router-dom";
+import {
+  ArrowLeft,
+  Mail,
+  Phone,
+  Briefcase,
+  Activity,
+  MessageSquare,
+} from "lucide-react";
+import { trpc } from "../lib/trpc";
+import { useStore } from "../lib/store";
+import { Avatar } from "../components/Avatar";
+import { InlineLoader, Spinner } from "../components/Loading";
+import { toast } from "../components/Toast";
+import { formatDate, formatRelative } from "../lib/utils";
 
 const roleColors: Record<string, string> = {
-  admin: 'bg-brand-100 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300',
-  finance: 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300',
-  operations: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
-  support: 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300',
-  developer: 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300',
+  admin: "bg-brand-100 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300",
+  finance: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300",
+  operations: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
+  support:
+    "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300",
+  developer:
+    "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300",
 };
 
 export default function MemberProfile() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { user: currentUser } = useStore();
+  const utils = trpc.useUtils();
 
   const { data: user, isLoading } = trpc.users.getById.useQuery({ id: id! });
   const { data: tasks } = trpc.tasks.list.useQuery({ assignedTo: id });
 
-  if (isLoading) return <InlineLoader />;
-  if (!user) return <div className="text-center text-ink-400">User not found</div>;
+  const getOrCreateDM = trpc.messaging.getOrCreateDM.useMutation({
+    onSuccess: (channel) => {
+      utils.messaging.listChannels.invalidate();
+      navigate(`/messages/${channel.id}`);
+    },
+    onError: (err) => toast.error(err.message),
+  });
 
-  const activeTasks = tasks?.filter((t) => t.status !== 'done') ?? [];
+  if (isLoading) return <InlineLoader />;
+  if (!user)
+    return <div className="text-center text-ink-400">User not found</div>;
+
+  const activeTasks = tasks?.filter((t) => t.status !== "done") ?? [];
+  const isSelf = user.id === currentUser?.id;
 
   return (
     <div className="space-y-6">
-      <Link to="/directory" className="flex items-center gap-2 text-sm text-ink-500 hover:text-ink-700 dark:hover:text-ink-300">
+      <Link
+        to="/directory"
+        className="flex items-center gap-2 text-sm text-ink-500 hover:text-ink-700 dark:hover:text-ink-300"
+      >
         <ArrowLeft className="h-4 w-4" /> Back to Directory
       </Link>
 
@@ -38,7 +65,9 @@ export default function MemberProfile() {
             <h1 className="text-xl font-bold">{user.name}</h1>
             {user.title && <p className="text-ink-500">{user.title}</p>}
             <div className="mt-2 flex items-center gap-2">
-              <span className={`badge text-xs ${roleColors[user.role]}`}>{user.role}</span>
+              <span className={`badge text-xs ${roleColors[user.role]}`}>
+                {user.role}
+              </span>
               {user.isActive && (
                 <span className="badge bg-green-100 text-green-700 text-xs dark:bg-green-950 dark:text-green-300">
                   Active
@@ -46,9 +75,29 @@ export default function MemberProfile() {
               )}
             </div>
           </div>
-          <div className="text-right">
-            <p className="text-2xl font-bold">{user.activeTaskCount}</p>
-            <p className="text-xs text-ink-500">Active tasks</p>
+
+          {/* Stats + Message button */}
+          <div className="flex flex-col items-end gap-3">
+            <div className="text-right">
+              <p className="text-2xl font-bold">{user.activeTaskCount}</p>
+              <p className="text-xs text-ink-500">Active tasks</p>
+            </div>
+
+            {/* Send private message button — hidden on own profile */}
+            {!isSelf && (
+              <button
+                onClick={() => getOrCreateDM.mutate({ userId: user.id })}
+                disabled={getOrCreateDM.isPending}
+                className="btn btn-primary"
+              >
+                {getOrCreateDM.isPending ? (
+                  <Spinner />
+                ) : (
+                  <MessageSquare className="h-4 w-4" />
+                )}
+                Send Message
+              </button>
+            )}
           </div>
         </div>
 
@@ -78,7 +127,9 @@ export default function MemberProfile() {
       {/* Assigned tasks */}
       <div className="card">
         <div className="border-b border-ink-200 px-5 py-3 dark:border-ink-800">
-          <h2 className="font-semibold">Current Workload ({activeTasks.length})</h2>
+          <h2 className="font-semibold">
+            Current Workload ({activeTasks.length})
+          </h2>
         </div>
         <div className="divide-y divide-ink-100 dark:divide-ink-800">
           {activeTasks.length > 0 ? (
@@ -95,7 +146,7 @@ export default function MemberProfile() {
                   </p>
                 </div>
                 <span className="badge bg-ink-100 text-ink-600 text-xs capitalize dark:bg-ink-800 dark:text-ink-300">
-                  {task.status.replace('_', ' ')}
+                  {task.status.replace("_", " ")}
                 </span>
               </Link>
             ))
