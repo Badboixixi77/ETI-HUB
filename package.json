@@ -24,6 +24,7 @@
     "fix-maxwell": "tsx scripts/fix-maxwell.ts",
     "fix-drey": "tsx scripts/fix-drey.ts",
     "add-user": "tsx scripts/add-user.ts",
+    "clear-seed-data": "tsx scripts/clear-seed-data.ts",
     "migrate": "tsx scripts/migrate.ts"
   },
   "dependencies": {
