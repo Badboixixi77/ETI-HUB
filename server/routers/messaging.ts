@@ -4,6 +4,7 @@ import { db, schema } from '../db';
 import { eq, and, inArray } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 import { sendNewMessageEmail } from '../email';
+import { createNotification } from './notifications';
 
 export const messagingRouter = router({
   // List channels the user is a member of
@@ -172,7 +173,7 @@ export const messagingRouter = router({
         } as any)
         .returning();
 
-      // For DM channels: email the other member if they have emailOnMessage enabled
+      // For DM channels: notify + email the other member
       const [channel] = await db.select().from(schema.channels).where(eq(schema.channels.id, input.channelId)).limit(1);
       if (channel?.type === 'direct') {
         const members = await db.select({ userId: schema.channelMembers.userId })
@@ -182,15 +183,28 @@ export const messagingRouter = router({
         if (otherMemberId) {
           const [otherUser] = await db.select().from(schema.users).where(eq(schema.users.id, otherMemberId)).limit(1);
           const [prefs] = await db.select().from(schema.notificationPreferences).where(eq(schema.notificationPreferences.userId, otherMemberId)).limit(1);
-          if (otherUser && prefs?.emailOnMessage) {
-            sendNewMessageEmail({
-              to: otherUser.email,
-              recipientName: otherUser.name,
-              senderName: ctx.user!.name,
-              channelName: ctx.user!.name,
-              preview: input.content.slice(0, 200),
-              messagesUrl: `${process.env.CLIENT_URL}/messages/${input.channelId}`,
-            }).catch(() => {});
+
+          if (otherUser) {
+            // ── In-app notification + real-time socket push (always) ──
+            await createNotification({
+              userId: otherMemberId,
+              type: 'new_message',
+              title: `New message from ${ctx.user!.name}`,
+              body: input.content.slice(0, 100),
+              link: `/messages/${input.channelId}`,
+            });
+
+            // ── Email (only if preference enabled) ───────────────────
+            if (prefs?.emailOnMessage) {
+              sendNewMessageEmail({
+                to: otherUser.email,
+                recipientName: otherUser.name,
+                senderName: ctx.user!.name,
+                channelName: ctx.user!.name,
+                preview: input.content.slice(0, 200),
+                messagesUrl: `${process.env.CLIENT_URL}/messages/${input.channelId}`,
+              }).catch(() => {});
+            }
           }
         }
       }

@@ -133,7 +133,11 @@ export default function Topbar() {
                     <a
                       key={n.id}
                       href={n.link || "#"}
-                      onClick={() => setNotifOpen(false)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setNotifOpen(false);
+                        if (n.link) navigate(n.link);
+                      }}
                       className={cn(
                         "flex gap-3 border-b border-ink-100 px-4 py-3 last:border-0 dark:border-ink-800",
                         !n.isRead && "bg-brand-50/50 dark:bg-brand-900/10",
