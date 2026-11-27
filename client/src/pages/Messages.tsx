@@ -40,10 +40,11 @@ export default function Messages() {
     [channels, channelId],
   );
 
-  const { data: messages } = trpc.messaging.getMessages.useQuery(
-    { channelId: channelId! },
-    { enabled: !!channelId },
-  );
+  const { data: messages, error: messagesError } =
+    trpc.messaging.getMessages.useQuery(
+      { channelId: channelId! },
+      { enabled: !!channelId, retry: false },
+    );
 
   const sendMessage = trpc.messaging.sendMessage.useMutation({
     onSuccess: (msg) => {
@@ -265,6 +266,28 @@ export default function Messages() {
               className="btn btn-secondary sm:hidden"
             >
               View channels
+            </button>
+          </div>
+        ) : messagesError ? (
+          // Server returned FORBIDDEN — user tried to access a channel they're not in
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-100 dark:bg-red-950">
+              <MessageSquare className="h-7 w-7 text-red-500" />
+            </div>
+            <p className="font-semibold text-ink-700 dark:text-ink-200">
+              Access denied
+            </p>
+            <p className="text-sm text-ink-400">
+              You are not a member of this conversation.
+            </p>
+            <button
+              onClick={() => {
+                navigate("/messages");
+                setShowChannelList(true);
+              }}
+              className="btn btn-secondary"
+            >
+              Back to messages
             </button>
           </div>
         ) : (

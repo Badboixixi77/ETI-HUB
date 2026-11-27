@@ -122,11 +122,27 @@ io.on('connection', (socket: AuthenticatedSocket) => {
     }
   });
 
-  socket.on('join_channel', (channelId: string) => {
-    socket.join(`channel:${channelId}`);
+  socket.on("join_channel", async (channelId: string) => {
+    if (!socket.userId) return;
+    try {
+      const { db, schema } = await import("./db");
+      const { eq, and } = await import("drizzle-orm");
+      const [member] = await db
+        .select()
+        .from(schema.channelMembers)
+        .where(
+          and(
+            eq(schema.channelMembers.channelId, channelId),
+            eq(schema.channelMembers.userId, socket.userId!),
+          ),
+        )
+        .limit(1);
+      if (member) socket.join(`channel:${channelId}`);
+      // Silently ignore if not a member
+    } catch { /* DB error — don't join */ }
   });
 
-  socket.on('leave_channel', (channelId: string) => {
+  socket.on("leave_channel", (channelId: string) => {
     socket.leave(`channel:${channelId}`);
   });
 

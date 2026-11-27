@@ -202,6 +202,30 @@ export const messagingRouter = router({
   markRead: protectedProcedure
     .input(z.object({ messageId: z.string().uuid() }))
     .mutation(async ({ input, ctx }) => {
+      // Verify the user is a member of the channel this message belongs to
+      const [msg] = await db
+        .select({ channelId: schema.messages.channelId })
+        .from(schema.messages)
+        .where(eq(schema.messages.id, input.messageId))
+        .limit(1);
+
+      if (!msg) return { success: true }; // message not found — silently ignore
+
+      const [member] = await db
+        .select()
+        .from(schema.channelMembers)
+        .where(
+          and(
+            eq(schema.channelMembers.channelId, msg.channelId),
+            eq(schema.channelMembers.userId, ctx.user!.id),
+          ),
+        )
+        .limit(1);
+
+      if (!member) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'You are not a member of this channel' });
+      }
+
       await db
         .insert(schema.messageReadReceipts)
         .values({ messageId: input.messageId, userId: ctx.user!.id } as any)
